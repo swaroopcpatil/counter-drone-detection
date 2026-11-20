@@ -85,7 +85,7 @@ def evaluate_sequence(seq: str | Path, cfg: Config | None = None, min_prob: floa
             break
         res = pipe.process(rgb, th, t)
         cands = [s for s in res.tracks if s.confirmed and s.drone_prob >= min_prob]
-        best = max(cands, key=lambda s: (s.drone_prob, s.age)) if cands else None
+        best = best_target(res.tracks, min_prob)
 
         pred_rgb = best.box if best is not None else None
         pred_ir = None
@@ -165,6 +165,13 @@ def evaluate_dataset(root: str | Path, cfg: Config | None = None, out_dir: str |
     return summary
 
 
+def best_target(snapshots, min_prob: float):
+    """Single-target choice: the confirmed track the system is most sure is a drone,
+    weighing its classification by how strongly the detector currently sees it."""
+    cands = [s for s in snapshots if s.confirmed and s.drone_prob >= min_prob]
+    return max(cands, key=lambda s: (s.drone_prob * max(s.score, 0.05), s.age)) if cands else None
+
+
 def _single_sensor_cfg(cfg: Config, modality: str) -> Config:
     """A pipeline that runs ONE camera through its YOLO model (no fusion, no calibration)."""
     src = cfg.rgb if modality == "rgb" else cfg.thermal
@@ -209,7 +216,8 @@ def evaluate_sequence_single(seq: str | Path, cfg: Config, modality: str, min_pr
         dets = [d for d in res.rgb_dets if d.label in (None, "drone") and d.score >= det_conf]
         det_box = max(dets, key=lambda d: d.score).box if dets else None
         cands = [s for s in res.tracks if s.confirmed and s.drone_prob >= min_prob]
-        trk_box = max(cands, key=lambda s: (s.drone_prob, s.age)).box if cands else None
+        best = best_target(res.tracks, min_prob)
+        trk_box = best.box if best is not None else None
         vis = bool(exist[i])
         gt = _xywh_to_xyxy(rects[i]) if vis else None
         for key, pred in (("det", det_box), ("trk", trk_box)):

@@ -201,3 +201,47 @@ def test_large_jittery_target_keeps_one_track():
         covered += bool(confirmed)
     assert len(ids) == 1, ids
     assert covered >= 65, covered
+
+
+def _anti_uav_like_run(seed, n=300, fps=25):
+    """One YOLO-labelled drone whose image motion is jerky (camera chasing it), plus a
+    persistent weak false box on a 'building' and occasional random weak boxes."""
+    from counter_drone.anti_uav import best_target, iou_xyxy
+    from counter_drone.pipeline import CounterDronePipeline
+
+    class Stub:  # stands in for the YOLO detector: returns this frame's boxes
+        dets = []
+
+        def detect(self, _img):
+            return self.dets
+
+    rng = np.random.default_rng(seed)
+    cfg = Config()
+    pipe = CounterDronePipeline(cfg, np.eye(3), (1920, 1080), (1920, 1080))
+    pipe.rgb_det = Stub()
+    frame = np.full((8, 8, 3), 120, np.uint8)
+    p, v, size = np.array([960.0, 540.0]), np.zeros(2), 60.0
+    building = rng.uniform([200, 700], [1700, 1000])
+    hits = 0
+    for k in range(n):
+        v = 0.9 * v + rng.normal(0, 60, 2)
+        if rng.random() < 0.02:
+            v += rng.normal(0, 600, 2)
+        p = np.clip(p + v / fps, 100, [1820, 980])
+        gt = np.array([p[0] - 30, p[1] - 21, p[0] + 30, p[1] + 21])
+        dets = []
+        if rng.random() < 0.95:
+            dets.append(Detection(gt + rng.normal(0, 3.6, 4), 0.85, "rgb", rgb_score=0.85, label="drone"))
+        if rng.random() < 0.6:
+            dets.append(Detection(np.r_[building - 15, building + 15], 0.33, "rgb", rgb_score=0.33, label="drone"))
+        Stub.dets = dets
+        best = best_target(pipe.process(frame, None, k / fps).tracks, 0.3)
+        hits += best is not None and iou_xyxy(best.box, gt) > 0.3
+    return hits / n
+
+
+def test_tracker_keeps_detector_hits_on_chasing_camera():
+    """Regression for the Anti-UAV per-camera gap (detector 76% vs tracked 35%): the tracker
+    must not fragment on jerky motion nor prefer a weak false box."""
+    rates = [_anti_uav_like_run(s) for s in range(3)]   # previous tracker: 0.28 / 0.56 / 0.43
+    assert min(rates) > 0.7 and np.mean(rates) > 0.8, rates

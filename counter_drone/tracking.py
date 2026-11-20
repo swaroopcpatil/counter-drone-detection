@@ -43,6 +43,10 @@ class KalmanCV:
         self.x[4:] = np.maximum(self.x[4:], 1.0)
         self.P = F @ self.P @ F.T + Q
 
+    @property
+    def size(self) -> float:
+        return float(max(self.x[4], self.x[5], 1.0))
+
     def pos_std(self) -> float:
         """Measurement jitter grows with target size: a 100 px drone's box centre moves
         far more between frames (detector box noise, camera shake) than a 6 px one's."""
@@ -136,14 +140,28 @@ class Track:
             "t": t, "cx": x[0], "cy": x[1], "vx": x[2], "vy": x[3],
             "w": float(det.wh[0]), "h": float(det.wh[1]),
             "src": det.source, "in_tfov": det.in_thermal_fov, "rgb_ok": det.rgb_ok,
-            "tc": det.thermal_contrast, "label": det.label,
+            "tc": det.thermal_contrast, "label": det.label, "score": float(det.score),
         })
+        self.last_det_box = det.box.copy()
         self.trail.append((x[0], x[1]))
 
     @property
     def box(self) -> np.ndarray:
+        """Where the target is now: this frame's detection box when the track was just
+        matched (no smoothing lag on jerky motion), else the Kalman prediction."""
+        if self.misses == 0 and getattr(self, "last_det_box", None) is not None:
+            return self.last_det_box.copy()
+        return self.filtered_box
+
+    @property
+    def filtered_box(self) -> np.ndarray:
         cx, cy, _, _, w, h = self.kf.x
         return np.array([cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2])
+
+    def recent_score(self, n: int = 10) -> float:
+        """Mean detection confidence over the last n matched detections."""
+        sc = [h["score"] for h in list(self.history)[-n:]]
+        return float(np.mean(sc)) if sc else 0.0
 
     @property
     def velocity(self) -> np.ndarray:
@@ -211,6 +229,11 @@ class MultiTargetTracker:
             d2 = (sd * y[:, 0] ** 2 - 2 * b * y[:, 0] * y[:, 1] + sa * y[:, 1] ** 2) / det_s
             ok = d2 <= self.cfg.gate_chi2
             cost[i, ok] = d2[ok] - 0.5 * score[ok]  # prefer confident detections on ties
+            # Size gate: a detection within ~1.5 box-widths of the prediction is the same
+            # target even when it jumped more than the motion model expects (a camera that
+            # pans after the drone makes its image motion jerky). Ranked after statistical matches.
+            near = (~ok) & (np.linalg.norm(y, axis=1) <= self.cfg.gate_size_frac * tr.kf.size)
+            cost[i, near] = self.cfg.gate_chi2 + np.linalg.norm(y[near], axis=1) / tr.kf.size - 0.5 * score[near]
         matched = set()
         used = set()
         for i, k in zip(*linear_sum_assignment(cost)):
@@ -270,12 +293,16 @@ class DroneClassifier:
         labels = [e["label"] for e in h if e["label"]]
         if labels:
             frac = labels.count("drone") / len(labels)
-            ev["label"] = c.w_label * (2 * frac - 1)
+            # weigh the label by how confident the detector was: a 0.85 'drone' is strong
+            # evidence, a 0.3 'drone' (typical of a false box on a building edge) counts against
+            conf = float(np.mean([e["score"] for e in h if e["label"]]))
+            trust = float(np.clip((conf - c.label_conf_lo) / (c.label_conf_hi - c.label_conf_lo), 0.0, 1.0))
+            ev["label"] = c.w_label * (2 * frac - 1) * (2 * trust - 1)
             # A trained detector recognises the target from its appearance. The hand-made
             # flight cues assume a fixed camera; on a panning/tilting camera (or a drone
             # turning, which changes its box shape) they misfire, so when the detector
             # labels the track they only nudge the decision.
-            if len(labels) >= c.label_min_share * len(h):
+            if len(labels) >= c.label_min_share * len(h) and ev["label"] > 0:
                 for k in ("flap", "turn", "hover"):
                     if k in ev:
                         ev[k] *= c.kinematic_scale_with_label
@@ -317,7 +344,7 @@ class DroneClassifier:
                 if abs(mem[k]) > 0.05:
                     ev[k] = mem[k]
         mem.update(ev)
-        if "consistency" not in ev and "label" not in ev:
+        if "consistency" not in ev and ev.get("label", 0.0) <= 0:
             # no cross-check and no learned identity: unconfirmed single-sensor blob
             ev["single_sensor"] = self.cfg.w_single_sensor
         tr.extra["evidence"] = ev

@@ -69,6 +69,7 @@ class TrackSnapshot:
     sources: str                     # e.g. "RT" = recently seen by RGB and Thermal
     trail: list = field(default_factory=list)
     label: str | None = None         # majority class from the learned detector (YOLO), if used
+    score: float = 0.0               # mean detection confidence over recent matches
 
     def to_dict(self) -> dict:
         r = lambda v: None if v is None else round(float(v), 2)  # noqa: E731

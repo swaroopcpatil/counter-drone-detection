@@ -79,6 +79,7 @@ class TrackerConfig:
     meas_size_std: float = 3.0          # px
     meas_rel_std: float = 0.1           # jitter as a fraction of box size (big/near targets)
     gate_chi2: float = 13.8             # chi-square gate, 2 dof, 99.9 %
+    gate_size_frac: float = 1.5         # also match a detection within this many box sizes
     min_hits_confirm: int = 4
     confirm_window: int = 6             # M-of-N: min_hits_confirm hits in last N frames
     max_misses_tentative: int = 2
@@ -108,6 +109,8 @@ class ClassifierConfig:
     w_label: float = 3.0                # class label from a learned detector, if any
     kinematic_scale_with_label: float = 0.25  # weight of flap/turn/hover when a detector labels the track
     label_min_share: float = 0.3        # ... in at least this share of the window's frames
+    label_conf_lo: float = 0.25         # mean detector confidence at which a label counts fully against
+    label_conf_hi: float = 0.55         # ... and fully for (0.40 = neutral)
     ema: float = 0.15                   # smoothing of the posterior
 
 
