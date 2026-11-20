@@ -70,6 +70,8 @@ class TrackSnapshot:
     trail: list = field(default_factory=list)
     label: str | None = None         # majority class from the learned detector (YOLO), if used
     score: float = 0.0               # mean detection confidence over recent matches
+    det_score: float = 0.0           # confidence of the detection matched THIS frame (0 if coasting)
+    hits: int = 0
 
     def to_dict(self) -> dict:
         r = lambda v: None if v is None else round(float(v), 2)  # noqa: E731

@@ -143,6 +143,7 @@ class Track:
             "tc": det.thermal_contrast, "label": det.label, "score": float(det.score),
         })
         self.last_det_box = det.box.copy()
+        self.det_score = float(det.score)
         self.trail.append((x[0], x[1]))
 
     @property

@@ -203,7 +203,7 @@ def test_large_jittery_target_keeps_one_track():
     assert covered >= 65, covered
 
 
-def _anti_uav_like_run(seed, n=300, fps=25):
+def _anti_uav_like_run(seed, n=300, fps=25, hard=False):
     """One YOLO-labelled drone whose image motion is jerky (camera chasing it), plus a
     persistent weak false box on a 'building' and occasional random weak boxes."""
     from counter_drone.anti_uav import best_target, iou_xyxy
@@ -225,8 +225,8 @@ def _anti_uav_like_run(seed, n=300, fps=25):
     hits = 0
     for k in range(n):
         v = 0.9 * v + rng.normal(0, 60, 2)
-        if rng.random() < 0.02:
-            v += rng.normal(0, 600, 2)
+        if rng.random() < (0.05 if hard else 0.02):
+            v += rng.normal(0, 1200 if hard else 600, 2)
         p = np.clip(p + v / fps, 100, [1820, 980])
         gt = np.array([p[0] - 30, p[1] - 21, p[0] + 30, p[1] + 21])
         dets = []
@@ -234,6 +234,10 @@ def _anti_uav_like_run(seed, n=300, fps=25):
             dets.append(Detection(gt + rng.normal(0, 3.6, 4), 0.85, "rgb", rgb_score=0.85, label="drone"))
         if rng.random() < 0.6:
             dets.append(Detection(np.r_[building - 15, building + 15], 0.33, "rgb", rgb_score=0.33, label="drone"))
+        if hard:  # medium-confidence distractor drifting across (bird / plane)
+            q = np.array([300 + 40 * k / fps, 300 + 15 * np.sin(k / fps)])
+            sc = float(rng.uniform(0.5, 0.65))
+            dets.append(Detection(np.r_[q - 20, q + 20], sc, "rgb", rgb_score=sc, label="drone"))
         Stub.dets = dets
         best = best_target(pipe.process(frame, None, k / fps).tracks, 0.3)
         hits += best is not None and iou_xyxy(best.box, gt) > 0.3
@@ -245,3 +249,11 @@ def test_tracker_keeps_detector_hits_on_chasing_camera():
     must not fragment on jerky motion nor prefer a weak false box."""
     rates = [_anti_uav_like_run(s) for s in range(3)]   # previous tracker: 0.28 / 0.56 / 0.43
     assert min(rates) > 0.7 and np.mean(rates) > 0.8, rates
+
+
+def test_selection_follows_confident_detector_under_distractor():
+    """Regression for the remaining RGB gap (detector 76% vs tracked 58%): with fast pans
+    and a medium-confidence distractor, the reported target must follow the detector's
+    confident box. Previous selection rule: about 0.44 to 0.57 in this scenario."""
+    rates = [_anti_uav_like_run(s, hard=True) for s in range(3)]
+    assert min(rates) > 0.75 and np.mean(rates) > 0.8, rates

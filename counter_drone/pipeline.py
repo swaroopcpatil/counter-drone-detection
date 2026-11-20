@@ -89,6 +89,7 @@ class CounterDronePipeline:
             azimuth_deg=tr.extra.get("az", 0.0), elevation_deg=tr.extra.get("el", 0.0),
             range_m=tr.extra.get("range_m"), closing_mps=tr.extra.get("closing"),
             age=tr.age, misses=tr.misses, sources=tr.recent_sources(), trail=list(tr.trail)[-40:],
-            label=tr.label(), score=tr.recent_score(),
+            label=tr.label(), score=tr.recent_score(), hits=tr.hits,
+            det_score=getattr(tr, "det_score", 0.0) if tr.misses == 0 else 0.0,
         ) for tr in tracks]
         return FrameResult(t, rgb_dets, th_dets, fused, snaps, events, th_norm, tm)

@@ -165,9 +165,19 @@ def evaluate_dataset(root: str | Path, cfg: Config | None = None, out_dir: str |
     return summary
 
 
-def best_target(snapshots, min_prob: float):
-    """Single-target choice: the confirmed track the system is most sure is a drone,
-    weighing its classification by how strongly the detector currently sees it."""
+def best_target(snapshots, min_prob: float, strong_det: float = 0.5, min_hits: int = 2):
+    """Single-target choice.
+
+    1. A track matched THIS frame to a confident detection (>= ``strong_det``) wins, the most
+       confident first: when the detector is sure, follow it (even a just-started track,
+       so a fragmented track cannot hand the pick to an older false one).
+    2. Otherwise the confirmed track the system is most sure is a drone, weighting its
+       classification by recent detection confidence - this is where the tracker earns
+       its keep, bridging frames the detector misses.
+    """
+    strong = [s for s in snapshots if s.det_score >= strong_det and s.hits >= min_hits]
+    if strong:
+        return max(strong, key=lambda s: (s.det_score, s.drone_prob))
     cands = [s for s in snapshots if s.confirmed and s.drone_prob >= min_prob]
     return max(cands, key=lambda s: (s.drone_prob * max(s.score, 0.05), s.age)) if cands else None
 
