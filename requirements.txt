@@ -1,0 +1,7 @@
+numpy>=1.24
+scipy>=1.10
+opencv-python-headless>=4.8   # use opencv-python instead if you want --display windows
+# Optional: YOLO training / inference (install PyTorch first; RTX 50xx needs the cu128 build:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 )
+# ultralytics>=8.3
+# gdown            # Anti-UAV300 download in scripts/train_anti_uav.py

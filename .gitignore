@@ -1,0 +1,15 @@
+runs/
+datasets/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.pt
+counter-drone.zip
+
+# Large data / model directories
+Anti-UAV300/
+anti_uav_yolo/
+anti_uav_eval/
+demo/
+yolo/
+.venv/
