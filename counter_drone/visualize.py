@@ -17,11 +17,13 @@ def _put(img, text, org, color, scale=0.45, thick=1):
 
 
 def render(rgb: np.ndarray, res: FrameResult, H_t2r: np.ndarray, thermal_size, show_dets=True,
-           fps: float | None = None) -> np.ndarray:
+           fps: float | None = None, has_thermal: bool = True) -> np.ndarray:
+    """Annotated RGB view, plus the false-colour thermal panel when a thermal camera is used."""
     view = rgb.copy() if rgb is not None else np.zeros((540, 960, 3), np.uint8)
-    poly = thermal_fov_polygon(H_t2r, thermal_size).astype(np.int32)
-    cv2.polylines(view, [poly], True, (255, 0, 255), 1, cv2.LINE_AA)
-    _put(view, "thermal FOV", tuple(poly[0] + [4, 14]), (255, 0, 255), 0.4)
+    if has_thermal:
+        poly = thermal_fov_polygon(H_t2r, thermal_size).astype(np.int32)
+        cv2.polylines(view, [poly], True, (255, 0, 255), 1, cv2.LINE_AA)
+        _put(view, "thermal FOV", tuple(poly[0] + [4, 14]), (255, 0, 255), 0.4)
 
     if show_dets:
         for d in res.fused_dets:
@@ -54,6 +56,8 @@ def render(rgb: np.ndarray, res: FrameResult, H_t2r: np.ndarray, thermal_size, s
     cv2.rectangle(view, (0, 0), (view.shape[1], 22), (0, 0, 0), -1)
     _put(view, hud, (6, 16), (255, 255, 255), 0.5)
 
+    if not has_thermal:
+        return view
     # thermal panel
     h = view.shape[0]
     if res.thermal_norm is not None:

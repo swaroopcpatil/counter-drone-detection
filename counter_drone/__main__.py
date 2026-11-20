@@ -178,7 +178,7 @@ def cmd_run(a):
                 log.write(json.dumps(res.to_dict()) + "\n")
             if a.display or (out and a.record):
                 frame = render(rgb if rgb is not None else np.zeros((rgb_size[1], rgb_size[0], 3), np.uint8),
-                               res, H, th_size, fps=fps)
+                               res, H, th_size, fps=fps, has_thermal=bool(a.thermal))
                 if out and a.record:
                     vw = vw or _writer(out / "run.mp4", frame.shape, 15)
                     if vw:

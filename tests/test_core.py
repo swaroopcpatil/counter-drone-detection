@@ -296,3 +296,13 @@ def test_track_identity_survives_gimbal_recentring_jumps():
     ids, lost = _gimbal_run()
     assert len(ids) == 1, ids
     assert lost == 0, lost
+
+
+def test_render_without_thermal_camera_shows_rgb_only():
+    from counter_drone.pipeline import CounterDronePipeline
+    from counter_drone.visualize import render
+    rgb = np.full((360, 640, 3), 200, np.uint8)
+    pipe = CounterDronePipeline(Config(), np.eye(3), (640, 360), (640, 360))
+    res = pipe.process(rgb, None, 0.0)
+    assert render(rgb, res, np.eye(3), (640, 360), has_thermal=False).shape == rgb.shape
+    assert render(rgb, res, np.eye(3), (640, 360)).shape[1] > rgb.shape[1]   # with thermal panel
