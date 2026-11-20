@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560" font-family="Segoe UI, Helvetica, Arial, sans-serif" role="img" aria-label="Per-frame pipeline: RGB and thermal detection, fusion, tracking, classification, threat assessment">
+  <rect width="900" height="560" fill="#fcfcfb"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#8a8984"/>
+    </marker>
+  </defs>
+  <text x="28" y="40" font-size="20" font-weight="700" fill="#0b0b0b">Two camera streams merge into one fused picture before tracking</text>
+  <text x="28" y="64" font-size="13" fill="#52514e">Every frame runs the same seven stages; either camera may be missing and the pipeline continues on the other.</text>
+
+  <g fill="none" stroke="#8a8984" stroke-width="1.5">
+    <path d="M258 128H300" marker-end="url(#a)"/>
+    <path d="M258 248H300" marker-end="url(#a)"/>
+    <path d="M530 128H560V168H590" marker-end="url(#a)"/>
+    <path d="M530 248H560V208H590" marker-end="url(#a)"/>
+    <path d="M736 230V320H143V352" marker-end="url(#a)"/>
+    <path d="M286 410H318" marker-end="url(#a)"/>
+    <path d="M574 410H606" marker-end="url(#a)"/>
+    <path d="M734 462V494" marker-end="url(#a)"/>
+  </g>
+  <text x="440" y="312" text-anchor="middle" font-size="12" fill="#52514e">fused detections in RGB coordinates</text>
+
+  <g>
+    <rect x="28" y="88" width="230" height="80" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="44" y="116" font-size="15" font-weight="700" fill="#0b0b0b">RGB camera</text>
+    <text x="44" y="138" font-size="12.5" fill="#52514e">Visible video, up to 1080p</text>
+    <text x="44" y="156" font-size="12.5" fill="#52514e">USB, RTSP stream or file</text>
+  </g>
+  <g>
+    <rect x="28" y="208" width="230" height="80" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="44" y="236" font-size="15" font-weight="700" fill="#0b0b0b">Thermal camera</text>
+    <text x="44" y="258" font-size="12.5" fill="#52514e">Raw 16-bit infrared (optional)</text>
+    <text x="44" y="276" font-size="12.5" fill="#52514e">Percentile auto-gain to 0..1</text>
+  </g>
+  <g>
+    <rect x="300" y="88" width="230" height="80" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="316" y="116" font-size="15" font-weight="700" fill="#0b0b0b">RGB detector</text>
+    <text x="316" y="138" font-size="12.5" fill="#52514e">YOLO11s trained on Anti-UAV300</text>
+    <text x="316" y="156" font-size="12.5" fill="#52514e">or black-hat + censored CFAR</text>
+  </g>
+  <g>
+    <rect x="300" y="208" width="230" height="80" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="316" y="236" font-size="15" font-weight="700" fill="#0b0b0b">Thermal detector</text>
+    <text x="316" y="258" font-size="12.5" fill="#52514e">YOLO11s trained on Anti-UAV300</text>
+    <text x="316" y="276" font-size="12.5" fill="#52514e">or top-hat + censored CFAR</text>
+  </g>
+  <g>
+    <rect x="590" y="150" width="282" height="80" rx="10" fill="#e6effa" stroke="#2a78d6" stroke-width="2"/>
+    <text x="606" y="178" font-size="15" font-weight="700" fill="#0b0b0b">Fusion</text>
+    <text x="606" y="200" font-size="12.5" fill="#0b0b0b">Homography maps thermal onto RGB</text>
+    <text x="606" y="218" font-size="12.5" fill="#0b0b0b">Hungarian pairing, noisy-OR confidence</text>
+  </g>
+  <g>
+    <rect x="28" y="352" width="258" height="110" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="44" y="380" font-size="15" font-weight="700" fill="#0b0b0b">Tracker</text>
+    <text x="44" y="402" font-size="12.5" fill="#52514e">Kalman filter per target</text>
+    <text x="44" y="420" font-size="12.5" fill="#52514e">Mahalanobis + size gate, Hungarian</text>
+    <text x="44" y="438" font-size="12.5" fill="#52514e">Re-acquires after camera jumps</text>
+    <text x="44" y="456" font-size="12.5" fill="#52514e">Confirm 4 of 6, coast 20 frames</text>
+  </g>
+  <g>
+    <rect x="318" y="352" width="256" height="110" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="334" y="380" font-size="15" font-weight="700" fill="#0b0b0b">Drone classifier</text>
+    <text x="334" y="402" font-size="12.5" fill="#52514e">Explainable log-odds, 45 frames:</text>
+    <text x="334" y="420" font-size="12.5" fill="#52514e">YOLO label x confidence,</text>
+    <text x="334" y="438" font-size="12.5" fill="#52514e">cross-sensor consistency,</text>
+    <text x="334" y="456" font-size="12.5" fill="#52514e">wing-beat, turn rate, hover</text>
+  </g>
+  <g>
+    <rect x="606" y="352" width="266" height="110" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="622" y="380" font-size="15" font-weight="700" fill="#0b0b0b">Threat assessment</text>
+    <text x="622" y="402" font-size="12.5" fill="#52514e">Azimuth, elevation, range estimate</text>
+    <text x="622" y="420" font-size="12.5" fill="#52514e">Closing speed</text>
+    <text x="622" y="438" font-size="12.5" fill="#52514e">NONE / LOW / MEDIUM / HIGH</text>
+    <text x="622" y="456" font-size="12.5" fill="#52514e">with hysteresis</text>
+  </g>
+  <g>
+    <rect x="606" y="494" width="266" height="52" rx="10" fill="#ffffff" stroke="#c9c8c2" stroke-width="1.5"/>
+    <text x="622" y="517" font-size="15" font-weight="700" fill="#0b0b0b">Outputs</text>
+    <text x="622" y="537" font-size="12.5" fill="#52514e">JSON alerts, track log, operator video</text>
+  </g>
+</svg>
