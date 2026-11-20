@@ -41,6 +41,8 @@ def _apply_yolo_args(cfg: Config, a) -> Config:
                 c.yolo_device = a.yolo_device
             if getattr(a, f"{sensor}_imgsz", None):
                 c.yolo_imgsz = getattr(a, f"{sensor}_imgsz")
+            if getattr(a, "yolo_conf", None) is not None:
+                c.yolo_conf = a.yolo_conf
     return cfg
 
 
@@ -52,6 +54,8 @@ def _add_yolo_args(p):
     p.add_argument("--yolo-device", help="cpu | 0 (first CUDA GPU) | mps")
     p.add_argument("--rgb-imgsz", type=int, help="YOLO inference size for RGB (default: config, 960)")
     p.add_argument("--thermal-imgsz", type=int, help="YOLO inference size for thermal (default: config, 320)")
+    p.add_argument("--yolo-conf", type=float,
+                   help="minimum YOLO confidence for a box to count (default 0.25; 0.5-0.6 suppresses weak false hits)")
 
 
 def cmd_yolo_dataset(a):
@@ -63,6 +67,10 @@ def cmd_yolo_dataset(a):
                                 crop=a.size if a.modality == "rgb" else None)
     elif a.kind == "coco":
         y = yd.convert_coco(a.src, a.images, a.out)
+    elif a.kind == "negatives":
+        y = yd.capture_negatives(a.src, a.out, a.frames, a.every)
+    elif a.kind == "merge":
+        y = yd.merge_datasets(a.src, a.extra or [], a.out)
     else:  # crop
         y = yd.crop_dataset(a.src, a.out, a.size)
     print(f"dataset written: {y}")
@@ -248,7 +256,12 @@ def main(argv=None):
     c.set_defaults(fn=cmd_calibrate)
 
     yd = sub.add_parser("yolo-dataset", help="build / convert a YOLO training dataset")
-    yd.add_argument("kind", choices=["synthetic", "anti-uav", "coco", "crop"])
+    yd.add_argument("kind", choices=["synthetic", "anti-uav", "coco", "crop", "negatives", "merge"],
+                    help="negatives: record drone-free frames (camera index or video) as background images; "
+                         "merge: combine --src with --extra datasets into one data.yaml (--out = yaml path)")
+    yd.add_argument("--frames", type=int, default=300, help="negatives: how many frames to keep")
+    yd.add_argument("--every", type=int, default=5, help="negatives: keep every Nth frame")
+    yd.add_argument("--extra", nargs="*", help="merge: additional dataset folders (e.g. negatives)")
     yd.add_argument("--out", required=True)
     yd.add_argument("--modality", choices=["rgb", "thermal"], default="rgb")
     yd.add_argument("--src", help="anti-uav: dataset root; coco: annotations json; crop: dataset dir")

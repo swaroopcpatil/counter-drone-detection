@@ -354,6 +354,52 @@ def resume(run_dir: str | Path, **overrides) -> Path:
     return Path(run_dir) / "weights" / "best.pt"
 
 
+def capture_negatives(source: str, out: str | Path, frames: int = 300, every: int = 5,
+                      val_frac: float = 0.1) -> Path:
+    """Record drone-FREE frames (faces, rooms, buildings, birds ...) as background images.
+
+    Each image gets an empty label file, which tells YOLO 'nothing to detect here'. Adding
+    such hard negatives from the deployment camera and fine-tuning removes false alarms the
+    original training data never covered (e.g. eyes in a close-up face). Make sure no drone
+    is visible while recording. ``source`` = camera index ("0") or a video file.
+    """
+    out = Path(out)
+    cap = cv2.VideoCapture(int(source) if str(source).isdigit() else str(source))
+    if not cap.isOpened():
+        raise RuntimeError(f"cannot open {source!r}")
+    n_val = max(1, int(frames * val_frac))
+    kept = i = 0
+    print(f"recording {frames} drone-free frames from {source} (every {every}th) - keep drones out of view; "
+          "move around, show faces, room, windows", flush=True)
+    while kept < frames:
+        ok, img = cap.read()
+        if not ok:
+            break
+        if i % every == 0:
+            split = "val" if kept % max(1, frames // n_val) == 0 else "train"
+            _write(out, split, f"neg_{kept:05d}", img, [], "jpg")
+            kept += 1
+            if kept % 50 == 0:
+                print(f"  {kept}/{frames}", flush=True)
+        i += 1
+    cap.release()
+    print(f"kept {kept} negative frames in {out}")
+    return write_data_yaml(out)
+
+
+def merge_datasets(base: str | Path, extras: list, out_yaml: str | Path) -> Path:
+    """One data.yaml whose train/val lists span several dataset folders (same class list)."""
+    dirs = [Path(base).resolve()] + [Path(e).resolve() for e in extras]
+    def split(name):
+        return [str(d / "images" / name) for d in dirs if (d / "images" / name).exists()]
+    out_yaml = Path(out_yaml)
+    out_yaml.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["train:"] + [f"  - {p}" for p in split("train")] + ["val:"] + [f"  - {p}" for p in split("val")]
+    lines += ["names:"] + [f"  {i}: {n}" for i, n in enumerate(CLASSES)]
+    out_yaml.write_text("\n".join(lines) + "\n")
+    return out_yaml
+
+
 def crop_dataset(src: str | Path, dst: str | Path, size: int = 640, seed: int = 0, min_keep: float = 0.5) -> Path:
     """One random native-resolution ``size`` crop per image (small-object training).
 

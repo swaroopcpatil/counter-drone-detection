@@ -109,3 +109,21 @@ def test_hybrid_detector_labels_classical_blobs_and_adds_yolo_only():
     assert by[(6, 4)].label is None                 # classical only
     assert by[(4, 5)].label == "bird"               # yolo only
     assert len(out) == 3                            # weak YOLO-only box rejected
+
+
+def test_capture_negatives_and_merge(tmp_path):
+    vid = tmp_path / "room.avi"
+    vw = cv2.VideoWriter(str(vid), cv2.VideoWriter_fourcc(*"MJPG"), 10, (64, 48))
+    for k in range(40):
+        vw.write(np.full((48, 64, 3), k * 5, np.uint8))
+    vw.release()
+    yd.capture_negatives(str(vid), tmp_path / "neg", frames=8, every=2)
+    imgs = list((tmp_path / "neg" / "images").rglob("*.jpg"))
+    assert len(imgs) == 8
+    assert all((tmp_path / "neg" / "labels" / p.parent.name / f"{p.stem}.txt").read_text() == "" for p in imgs)
+    assert list((tmp_path / "neg" / "images" / "val").glob("*.jpg"))      # some held out for validation
+    base = tmp_path / "base"
+    yd._write(base, "train", "a", np.zeros((8, 8, 3), np.uint8), [])
+    yd._write(base, "val", "b", np.zeros((8, 8, 3), np.uint8), [])
+    y = yd.merge_datasets(base, [tmp_path / "neg"], tmp_path / "merged.yaml").read_text()
+    assert y.count("images") == 4 and "0: drone" in y
