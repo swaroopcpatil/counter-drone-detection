@@ -43,9 +43,17 @@ class KalmanCV:
         self.x[4:] = np.maximum(self.x[4:], 1.0)
         self.P = F @ self.P @ F.T + Q
 
+    def pos_std(self) -> float:
+        """Measurement jitter grows with target size: a 100 px drone's box centre moves
+        far more between frames (detector box noise, camera shake) than a 6 px one's."""
+        c = self.cfg
+        return max(c.meas_pos_std, c.meas_rel_std * float(max(self.x[4], self.x[5])))
+
     def R(self, scale: float = 1.0) -> np.ndarray:
         c = self.cfg
-        return np.diag([(c.meas_pos_std * scale) ** 2] * 2 + [(c.meas_size_std * scale) ** 2] * 2)
+        size = float(max(self.x[4], self.x[5]))
+        ps, ss = self.pos_std(), max(c.meas_size_std, c.meas_rel_std * size)
+        return np.diag([(ps * scale) ** 2] * 2 + [(ss * scale) ** 2] * 2)
 
     def innovation(self, z, scale=1.0):
         S = self.Hm @ self.P @ self.Hm.T + self.R(scale)
@@ -192,8 +200,8 @@ class MultiTargetTracker:
         scale = np.array([_meas_scale(dets[j]) for j in det_idx])       # D
         score = np.array([dets[j].score for j in det_idx])
         cost = np.full((len(tracks), len(det_idx)), big)
-        r2 = self.cfg.meas_pos_std ** 2
         for i, tr in enumerate(tracks):
+            r2 = tr.kf.pos_std() ** 2
             P = tr.kf.P[:2, :2]
             y = Z - tr.kf.x[:2]
             # S differs per detection only through the (isotropic) measurement-noise scale
@@ -263,6 +271,14 @@ class DroneClassifier:
         if labels:
             frac = labels.count("drone") / len(labels)
             ev["label"] = c.w_label * (2 * frac - 1)
+            # A trained detector recognises the target from its appearance. The hand-made
+            # flight cues assume a fixed camera; on a panning/tilting camera (or a drone
+            # turning, which changes its box shape) they misfire, so when the detector
+            # labels the track they only nudge the decision.
+            if len(labels) >= c.label_min_share * len(h):
+                for k in ("flap", "turn", "hover"):
+                    if k in ev:
+                        ev[k] *= c.kinematic_scale_with_label
         return ev
 
     @staticmethod
@@ -301,7 +317,8 @@ class DroneClassifier:
                 if abs(mem[k]) > 0.05:
                     ev[k] = mem[k]
         mem.update(ev)
-        if "consistency" not in ev:
+        if "consistency" not in ev and "label" not in ev:
+            # no cross-check and no learned identity: unconfirmed single-sensor blob
             ev["single_sensor"] = self.cfg.w_single_sensor
         tr.extra["evidence"] = ev
         logit = self.cfg.bias + sum(ev.values())

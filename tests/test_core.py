@@ -160,3 +160,44 @@ def test_config_roundtrip(tmp_path):
     assert c2.rgb.k_sigma == 9.5 and c2.to_dict() == c.to_dict()
     with pytest.raises(KeyError):
         Config.from_dict({"rgb": {"nope": 1}})
+
+
+def test_labelled_drone_on_panning_camera_is_declared():
+    """Real footage (Anti-UAV): the camera pans/tilts after the drone and the drone's box
+    changes shape as it turns, so its image motion looks erratic. A track the trained
+    detector consistently labels 'drone' must still be declared, from one camera alone."""
+    cfg = TrackerConfig()
+    clf = DroneClassifier(ClassifierConfig())
+    rng = np.random.default_rng(7)
+    heading = np.cumsum(rng.normal(0, 0.9, 120))
+    pos = np.cumsum(np.stack([np.cos(heading), np.sin(heading)], 1) * 90 / 25, 0) + 500
+
+    def det(k):
+        x, y = pos[k]
+        w, h = 60 * (1 + 0.25 * np.sin(k / 3)), 40 * (1 + 0.3 * np.cos(k / 2))
+        return Detection(np.array([x - w / 2, y - h / 2, x + w / 2, y + h / 2]), 0.9, "rgb", label="drone",
+                         in_thermal_fov=False)
+
+    tr = Track(det(0), 0.0, cfg)
+    for k in range(1, 60):
+        t = k / 25
+        tr.predict(t)
+        tr.update(det(k), t)
+        clf.update(tr)
+    assert tr.drone_prob > 0.7, tr.extra["evidence"]
+
+
+def test_large_jittery_target_keeps_one_track():
+    """A near, 120 px drone: detector boxes jitter by several pixels frame to frame.
+    The gate must scale with target size so the track is not lost and restarted."""
+    tr = MultiTargetTracker(TrackerConfig())
+    rng = np.random.default_rng(1)
+    ids, covered = set(), 0
+    for k in range(75):
+        t = k / 25
+        cx, cy = 900 + 60 * t + rng.normal(0, 15), 500 + rng.normal(0, 15)
+        confirmed = [x for x in tr.step([_det(cx, cy, s=120)], t) if x.confirmed]
+        ids |= {x.id for x in confirmed}
+        covered += bool(confirmed)
+    assert len(ids) == 1, ids
+    assert covered >= 65, covered

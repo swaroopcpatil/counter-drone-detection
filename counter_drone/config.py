@@ -77,6 +77,7 @@ class TrackerConfig:
     process_accel: float = 150.0        # px/s^2 white-noise acceleration
     meas_pos_std: float = 2.5           # px
     meas_size_std: float = 3.0          # px
+    meas_rel_std: float = 0.1           # jitter as a fraction of box size (big/near targets)
     gate_chi2: float = 13.8             # chi-square gate, 2 dof, 99.9 %
     min_hits_confirm: int = 4
     confirm_window: int = 6             # M-of-N: min_hits_confirm hits in last N frames
@@ -105,6 +106,8 @@ class ClassifierConfig:
     w_hover: float = 1.0                # fraction of time (near-)stationary -> drone
     hover_speed_px: float = 6.0
     w_label: float = 3.0                # class label from a learned detector, if any
+    kinematic_scale_with_label: float = 0.25  # weight of flap/turn/hover when a detector labels the track
+    label_min_share: float = 0.3        # ... in at least this share of the window's frames
     ema: float = 0.15                   # smoothing of the posterior
 
 
