@@ -80,6 +80,8 @@ class TrackerConfig:
     meas_rel_std: float = 0.1           # jitter as a fraction of box size (big/near targets)
     gate_chi2: float = 13.8             # chi-square gate, 2 dof, 99.9 %
     gate_size_frac: float = 1.5         # also match a detection within this many box sizes
+    reacquire_min_score: float = 0.6    # a lost confirmed track may re-acquire a detection this confident
+    reacquire_size_frac: float = 6.0    # ... within this many box sizes (gimbal re-centring jumps)
     min_hits_confirm: int = 4
     confirm_window: int = 6             # M-of-N: min_hits_confirm hits in last N frames
     max_misses_tentative: int = 2

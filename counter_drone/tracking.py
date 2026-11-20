@@ -191,14 +191,20 @@ class MultiTargetTracker:
         for tr in self.tracks:
             tr.predict(t)
 
-        # Confirmed tracks get first pick of detections (cascade), then tentative.
+        # Confirmed tracks get first pick of detections (cascade), then a confirmed track
+        # that lost its target may re-acquire it after a jump, then tentative tracks.
         unmatched = list(range(len(dets)))
-        for group in ([tr for tr in self.tracks if tr.confirmed],
-                      [tr for tr in self.tracks if not tr.confirmed]):
-            matched_tracks, unmatched = self._associate(group, dets, unmatched, t)
-            for tr in group:
-                if tr not in matched_tracks:
-                    tr.mark_missed()
+        confirmed = [tr for tr in self.tracks if tr.confirmed]
+        tentative = [tr for tr in self.tracks if not tr.confirmed]
+        m_conf, unmatched = self._associate(confirmed, dets, unmatched, t)
+        m_reacq, unmatched = self._reacquire([tr for tr in confirmed if tr not in m_conf], dets, unmatched, t)
+        m_tent, unmatched = self._associate(tentative, dets, unmatched, t)
+        for tr in confirmed:
+            if tr not in m_conf and tr not in m_reacq:
+                tr.mark_missed()
+        for tr in tentative:
+            if tr not in m_tent:
+                tr.mark_missed()
 
         for j in unmatched:
             if dets[j].score >= self.cfg.init_min_score:
@@ -210,6 +216,43 @@ class MultiTargetTracker:
             for tr in self.tracks:
                 self.classifier.update(tr)
         return self.tracks
+
+    def _reacquire(self, tracks, dets, det_idx, t):
+        """Keep a confirmed track's identity through a sudden image jump.
+
+        A camera gimbal that lags the drone and then snaps to re-centre it moves the target
+        several box sizes in one frame - beyond any motion gate - which would start a new
+        track (and an operator alert) while the old one coasts away and is reported LOST.
+        A confirmed track that found nothing this frame may take an otherwise unmatched,
+        confident detection of the same class within ``reacquire_size_frac`` box sizes; its
+        motion state restarts at the new position."""
+        c = self.cfg
+        if not tracks or not det_idx:
+            return set(), det_idx
+        cand = [j for j in det_idx if dets[j].score >= c.reacquire_min_score]
+        if not cand:
+            return set(), det_idx
+        big = 1e6
+        cost = np.full((len(tracks), len(cand)), big)
+        for i, tr in enumerate(tracks):
+            lab = tr.label()
+            for k, j in enumerate(cand):
+                if lab and dets[j].label and dets[j].label != lab:
+                    continue
+                dist = float(np.linalg.norm(_z(dets[j])[:2] - tr.kf.x[:2]))
+                if dist <= c.reacquire_size_frac * tr.kf.size:
+                    cost[i, k] = dist / tr.kf.size
+        matched, used = set(), set()
+        for i, k in zip(*linear_sum_assignment(cost)):
+            if cost[i, k] >= big:
+                continue
+            tr, det = tracks[i], dets[cand[k]]
+            tr.kf = KalmanCV(_z(det), c)      # restart motion state at the new position
+            tr.update(det, t)
+            tr.extra["reacquired"] = tr.extra.get("reacquired", 0) + 1
+            matched.add(tr)
+            used.add(cand[k])
+        return matched, [j for j in det_idx if j not in used]
 
     def _associate(self, tracks, dets, det_idx, t):
         if not tracks or not det_idx:

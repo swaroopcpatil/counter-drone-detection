@@ -150,6 +150,8 @@ def cmd_run(a):
     th_size = (t0_.shape[1], t0_.shape[0]) if t0_ is not None else tuple(a.thermal_size)
     if a.homography:
         H = load_homography(a.homography)
+    elif not a.thermal:
+        H = np.diag([rgb_size[0] / th_size[0], rgb_size[1] / th_size[1], 1.0])  # unused: no thermal camera
     else:
         # no calibration: assume the two cameras are boresighted with the thermal image filling the RGB image
         print("WARNING: no --homography given; assuming thermal FOV == RGB FOV. Calibrate for real use.",

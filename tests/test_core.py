@@ -257,3 +257,42 @@ def test_selection_follows_confident_detector_under_distractor():
     confident box. Previous selection rule: about 0.44 to 0.57 in this scenario."""
     rates = [_anti_uav_like_run(s, hard=True) for s in range(3)]
     assert min(rates) > 0.75 and np.mean(rates) > 0.8, rates
+
+
+def _gimbal_run(n=750, fps=25, seed=0):
+    """A gimbal that lags the drone and snaps it back to centre every 1.3 s (as in Anti-UAV
+    sequence 20190925_124000_1_3): returns (confirmed track ids on the drone, LOST alerts)."""
+    from counter_drone.anti_uav import iou_xyxy
+    from counter_drone.pipeline import CounterDronePipeline
+
+    class Stub:
+        dets = []
+
+        def detect(self, _img):
+            return self.dets
+
+    rng = np.random.default_rng(seed)
+    pipe = CounterDronePipeline(Config(), np.eye(3), (1920, 1080), (1920, 1080))
+    pipe.rgb_det = Stub()
+    frame = np.full((8, 8, 3), 120, np.uint8)
+    x, size = 1100.0, 136.0
+    ids, lost = set(), 0
+    for k in range(n):
+        x -= 250 / fps
+        if k % int(1.3 * fps) == 0 and k:
+            x += 450                       # gimbal snaps the drone back toward centre
+        gt = np.array([x - size / 2, 500 - size * 0.35, x + size / 2, 500 + size * 0.35])
+        Stub.dets = [Detection(gt + rng.normal(0, 4, 4), 0.85, "rgb", rgb_score=0.85, label="drone")] \
+            if rng.random() < 0.95 else []
+        res = pipe.process(frame, None, k / fps)
+        ids |= {s.track_id for s in res.tracks if s.confirmed and iou_xyxy(s.box, gt) > 0.3}
+        lost += sum(e.level == "LOST" for e in res.events)
+    return ids, lost
+
+
+def test_track_identity_survives_gimbal_recentring_jumps():
+    """Live run on Anti-UAV video showed a new track + a LOST alert every ~1.3 s.
+    One drone must stay one track, with no LOST alerts while it is in view."""
+    ids, lost = _gimbal_run()
+    assert len(ids) == 1, ids
+    assert lost == 0, lost
