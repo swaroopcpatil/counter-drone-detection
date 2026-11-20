@@ -165,6 +165,98 @@ def evaluate_dataset(root: str | Path, cfg: Config | None = None, out_dir: str |
     return summary
 
 
+def _single_sensor_cfg(cfg: Config, modality: str) -> Config:
+    """A pipeline that runs ONE camera through its YOLO model (no fusion, no calibration)."""
+    src = cfg.rgb if modality == "rgb" else cfg.thermal
+    if not src.yolo_weights:
+        raise ValueError(f"no YOLO weights given for {modality}")
+    c = Config()
+    c.rgb.backend = "yolo"
+    c.rgb.yolo_weights, c.rgb.yolo_imgsz = src.yolo_weights, src.yolo_imgsz
+    c.rgb.yolo_device, c.rgb.yolo_conf = src.yolo_device, src.yolo_conf
+    c.rgb.min_mean_brightness = 0.0  # infrared frames are often dark; still a usable image
+    return c
+
+
+def evaluate_sequence_single(seq: str | Path, cfg: Config, modality: str, min_prob: float = 0.3,
+                             max_frames: int | None = None, det_conf: float = 0.25) -> dict:
+    """Score one camera of one sequence on its own, two ways:
+
+    * ``det``: the detector's single most confident drone box per frame (no tracking) -
+      what the trained model itself achieves;
+    * ``trk``: the same detections through the tracker + classifier (best confirmed track).
+    """
+    seq = Path(seq)
+    exist, rects = load_anti_uav_labels(seq, modality)
+    cap = cv2.VideoCapture(_find_video(seq, "visible" if modality == "rgb" else "infrared"))
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    c = _single_sensor_cfg(cfg, modality)
+    pipe = None
+    rows = {"det": ([], [], []), "trk": ([], [], [])}
+    i = 0
+    while True:
+        if i >= len(rects) or (max_frames and i >= max_frames):
+            break
+        ok, frame = cap.read()
+        if not ok:
+            break
+        if frame.ndim == 2:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        if pipe is None:
+            size = (frame.shape[1], frame.shape[0])
+            pipe = CounterDronePipeline(c, np.eye(3), size, size)
+        res = pipe.process(frame, None, i / fps)
+        dets = [d for d in res.rgb_dets if d.label in (None, "drone") and d.score >= det_conf]
+        det_box = max(dets, key=lambda d: d.score).box if dets else None
+        cands = [s for s in res.tracks if s.confirmed and s.drone_prob >= min_prob]
+        trk_box = max(cands, key=lambda s: (s.drone_prob, s.age)).box if cands else None
+        vis = bool(exist[i])
+        gt = _xywh_to_xyxy(rects[i]) if vis else None
+        for key, pred in (("det", det_box), ("trk", trk_box)):
+            rows[key][0].append(iou_xyxy(pred, gt) if (vis and pred is not None) else 0.0)
+            rows[key][1].append(pred is None)
+            rows[key][2].append(vis)
+        i += 1
+    cap.release()
+    out = {"sequence": seq.name, "modality": modality, "frames": i}
+    for key, (ious, absent, vis) in rows.items():
+        v, io = np.asarray(vis, bool), np.asarray(ious)
+        out[f"{key}_acc"] = round(anti_uav_accuracy(ious, absent, vis), 4)
+        out[f"{key}_hit_rate"] = round(float(np.mean(io[v] > 0.3)) if v.any() else float("nan"), 4)
+        out[f"{key}_mean_iou"] = round(float(np.mean(io[v])) if v.any() else float("nan"), 4)
+    return out
+
+
+def evaluate_dataset_per_sensor(root: str | Path, cfg: Config, out_dir: str | Path | None = None,
+                                max_frames: int | None = None, min_prob: float = 0.3,
+                                max_seqs: int | None = None) -> dict:
+    """Per-camera evaluation (see ``evaluate_sequence_single``) for every sensor that has weights."""
+    mods = [m for m, s in (("rgb", cfg.rgb), ("ir", cfg.thermal)) if s.yolo_weights]
+    if not mods:
+        raise ValueError("give --rgb-yolo and/or --thermal-yolo weights")
+    seqs = anti_uav_sequences(root, "ir")[: max_seqs or None]
+    results = []
+    for seq in seqs:
+        for m in mods:
+            if not _find_video(seq, "visible" if m == "rgb" else "infrared"):
+                continue
+            r = evaluate_sequence_single(seq, cfg, m, min_prob, max_frames)
+            results.append(r)
+            print(json.dumps(r), flush=True)
+    summary = {"sequences": len(seqs)}
+    for m in mods:
+        mine = [r for r in results if r["modality"] == m]
+        for k in ("det_acc", "det_hit_rate", "det_mean_iou", "trk_acc", "trk_hit_rate", "trk_mean_iou"):
+            vals = [r[k] for r in mine if not np.isnan(r[k])]
+            summary[f"{m}_{k}"] = round(float(np.mean(vals)), 4) if vals else None
+    if out_dir:
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "per_sensor.jsonl").write_text("\n".join(json.dumps(r) for r in results) + "\n")
+        (out_dir / "per_sensor_summary.json").write_text(json.dumps(summary, indent=2))
+    return summary
+
+
 def make_fake_anti_uav(root: str | Path, n_train: int = 3, n_val: int = 1, n_test: int = 1,
                        seconds: float = 6.0, seed: int = 500) -> Path:
     """Write synthetic sequences in Anti-UAV300 layout (for tests / dry runs without the dataset)."""

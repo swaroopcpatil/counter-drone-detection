@@ -66,7 +66,8 @@ class CounterDronePipeline:
         tm["thermal_det"] = (time.perf_counter() - t0) * 1e3
 
         t0 = time.perf_counter()
-        fused = self.fuser.fuse(rgb_dets, th_dets, rgb_usable(rgb, self.cfg.rgb.min_mean_brightness))
+        fused = self.fuser.fuse(rgb_dets, th_dets, rgb_usable(rgb, self.cfg.rgb.min_mean_brightness),
+                                thermal_ok=thermal is not None)
         tm["fusion"] = (time.perf_counter() - t0) * 1e3
 
         t0 = time.perf_counter()

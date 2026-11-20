@@ -30,7 +30,10 @@ class Fuser:
     def in_thermal_fov(self, pt) -> bool:
         return cv2.pointPolygonTest(self.fov, (float(pt[0]), float(pt[1])), False) >= 0
 
-    def fuse(self, rgb: list[Detection], thermal: list[Detection], rgb_ok: bool = True) -> list[Detection]:
+    def fuse(self, rgb: list[Detection], thermal: list[Detection], rgb_ok: bool = True,
+             thermal_ok: bool = True) -> list[Detection]:
+        """``thermal_ok=False`` (no thermal frame this cycle): RGB detections are not penalised
+        or marked as 'inside the thermal FOV', since thermal could not have confirmed them."""
         cfg = self.cfg
         mapped = map_boxes(np.array([d.box for d in thermal]), self.H) if thermal else np.zeros((0, 4))
         th = []
@@ -64,7 +67,7 @@ class Fuser:
         for i, r in enumerate(rgb):
             if i in used_r:
                 continue
-            inside = self.in_thermal_fov(r.center)
+            inside = thermal_ok and self.in_thermal_fov(r.center)
             f = cfg.rgb_only_in_thermal_fov_factor if inside else 1.0
             out.append(Detection(box=r.box.copy(), score=r.score * f, source="rgb", rgb_score=r.rgb_score,
                                  contrast=r.contrast, in_thermal_fov=inside, moving=r.moving, label=r.label))

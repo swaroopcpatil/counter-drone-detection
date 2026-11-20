@@ -77,9 +77,12 @@ def cmd_yolo_autolabel(a):
 
 
 def cmd_anti_uav_eval(a):
-    from .anti_uav import evaluate_dataset
+    from .anti_uav import evaluate_dataset, evaluate_dataset_per_sensor
     cfg = _apply_yolo_args(Config.load(a.config) if a.config else Config(), a)
-    s = evaluate_dataset(a.root, cfg, a.out, a.render, a.max_frames, a.min_prob)
+    if a.per_sensor:
+        s = evaluate_dataset_per_sensor(a.root, cfg, a.out, a.max_frames, a.min_prob, a.max_seqs)
+    else:
+        s = evaluate_dataset(a.root, cfg, a.out, a.render, a.max_frames, a.min_prob)
     print(json.dumps(s, indent=2))
 
 
@@ -270,6 +273,9 @@ def main(argv=None):
     ae.add_argument("--render", type=int, default=0, help="write annotated videos for the first N sequences")
     ae.add_argument("--max-frames", type=int, help="limit frames per sequence (quick runs)")
     ae.add_argument("--min-prob", type=float, default=0.3, help="min p(drone) to report a target")
+    ae.add_argument("--per-sensor", action="store_true",
+                    help="score each camera on its own (no fusion/calibration): detector-only and tracked")
+    ae.add_argument("--max-seqs", type=int, help="per-sensor: only the first N sequences")
     _add_yolo_args(ae)
     ae.set_defaults(fn=cmd_anti_uav_eval)
 
