@@ -172,6 +172,7 @@ def cmd_run(a):
         log = (out / "tracks.jsonl").open("w")
     vw = None
     t_last = time.perf_counter()
+    t_start, n_frames = t_last, 0
     fps = 0.0
     try:
         import itertools
@@ -180,6 +181,7 @@ def cmd_run(a):
             for e in res.events:
                 print(json.dumps(e.to_dict()), flush=True)
             now = time.perf_counter()
+            n_frames += 1
             fps = 0.9 * fps + 0.1 / max(1e-3, now - t_last)
             t_last = now
             if out:
@@ -201,6 +203,10 @@ def cmd_run(a):
         src.release()
         if vw:
             vw.release()
+        elapsed = time.perf_counter() - t_start
+        if n_frames:
+            print(f"processed {n_frames} frames in {elapsed:.1f} s: mean {n_frames / elapsed:.1f} FPS "
+                  f"(includes detection, tracking and display)", file=sys.stderr, flush=True)
 
 
 def cmd_calibrate(a):
