@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Monitoring dashboard{% endblock %}
+{% block content %}
+<div class="panel" style="max-width:360px;margin:24px auto;">
+  <h2 style="font-size:16px;margin-top:0;">Sign in</h2>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" style="display:grid;gap:10px;">
+    <label>Username <input name="username" autocomplete="username" required maxlength="32"></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+{% endblock %}

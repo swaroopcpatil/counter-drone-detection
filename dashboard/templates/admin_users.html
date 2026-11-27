@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Users · Monitoring dashboard{% endblock %}
+{% block content %}
+<div class="panel">
+  <strong>Accounts</strong>
+  <table>
+    <thead><tr><th>Username</th><th>Role</th></tr></thead>
+    <tbody>
+      {% for u in users %}<tr><td>{{ u.username }}</td><td>{{ u.role }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="panel">
+  <strong>Create account</strong>
+  <form method="post" style="display:grid;gap:10px;max-width:360px;margin-top:10px;">
+    <label>Username <input name="username" required minlength="3" maxlength="32"></label>
+    <label>Temporary password (12+ characters) <input name="password" type="password" required minlength="12"></label>
+    <label>Role
+      <select name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+    </label>
+    <button type="submit">Create</button>
+  </form>
+</div>
+{% endblock %}

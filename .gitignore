@@ -13,3 +13,7 @@ anti_uav_eval/
 demo/
 yolo/
 .venv/
+
+# Local dashboard data (accounts, session key)
+dashboard/dashboard.db
+dashboard/dashboard.key
