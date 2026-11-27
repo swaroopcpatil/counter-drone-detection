@@ -103,6 +103,22 @@ Alerts print as JSON lines, ready to pipe into another system:
 {"t": 0.85, "track_id": 1, "level": "HIGH", "previous": "LOW", "drone_prob": 0.711, "azimuth_deg": 2.99, "elevation_deg": 10.89, ...}
 ```
 
+## Research dashboard (login, roles, live view)
+
+`dashboard/` is a small Flask site around the detector: signed-in users see the annotated video, a sky-dome
+plot and the alert feed update live, and admins start and stop the detector on a named server-side source.
+Research use only. Run it from the repository root, as a single server process:
+
+```bash
+python -m dashboard.app create-user --role admin     # prompts for a username and a 12+ character password
+python -m dashboard.app serve --port 5000             # then open http://127.0.0.1:5000
+```
+
+Sources are an allowlist of names on the server (default: the first three Anti-UAV300 test clips; override with
+`DASHBOARD_SOURCES='{"name": "path-or-rtsp-url"}'`). The browser never sends a path or URL. YOLO weights default to
+`runs/yolo/anti_uav_rgb/weights/best.pt` on the GPU when present (`DASHBOARD_YOLO_WEIGHTS`, or
+`DASHBOARD_BACKEND=classical` to skip them). Serve over HTTPS before using it on a network.
+
 ## Train on Anti-UAV300 with a GPU (one command)
 
 [Anti-UAV300](https://github.com/ZhaoJ9014/Anti-UAV) provides paired RGB and infrared videos

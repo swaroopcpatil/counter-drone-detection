@@ -60,6 +60,22 @@ h1 { margin: 4px 0 0; font-size: 30px; font-weight: 700; letter-spacing: -.02em;
 .stat .note { font: 12px var(--mono); color: var(--c, var(--muted)); }
 
 .body { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.col { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.video { aspect-ratio: 16 / 9; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+         display: grid; place-items: center; position: relative; }
+.video img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.video img[hidden], .video-empty[hidden] { display: none; }
+.video-empty { color: var(--muted); font: 13px var(--mono); }
+.hint { margin: 12px 0 0; font: 11px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.hint code { color: var(--text); }
+.video.drop { border-color: var(--accent); }
+.video-empty { text-align: center; padding: 0 16px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.controls select { width: auto; padding: 8px 12px; font-size: 13px; }
+.btn.small { width: auto; padding: 8px 16px; font-size: 13px; }
+.btn:disabled, .btn.disabled { opacity: .5; cursor: default; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); width: auto; }
+.btn.ghost:hover { border-color: var(--accent); }
 .legend { display: flex; gap: 14px; font: 11px var(--mono); color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }

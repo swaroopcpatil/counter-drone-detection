@@ -3,6 +3,7 @@
 {% block body %}
 <div class="login">
   <form class="card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="brand">
       <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
         <circle cx="18" cy="18" r="15" fill="none" stroke="var(--accent)" stroke-width="2"/>
@@ -12,12 +13,14 @@
     </div>
     <div class="eyebrow">Research monitoring / sign in</div>
     {% if error %}<div class="flash error" role="alert" style="margin-bottom:16px">{{ error }}</div>{% endif %}
-    <div class="field"><label for="username">Username</label>
+    <div class="field"><label for="username">{% if open_access %}Name (anything){% else %}Username{% endif %}</label>
       <input id="username" name="username" autocomplete="username" required maxlength="32" autofocus></div>
+    {% if not open_access %}
     <div class="field"><label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required></div>
+    {% endif %}
     <button class="btn" type="submit">Sign in</button>
-    <div class="notice" style="margin-top:20px">Research use only. Accounts are created by an administrator.</div>
+    <div class="notice" style="margin-top:20px">{% if open_access %}Demo mode: any name works and there is no password. Local use only.{% else %}Research use only. Accounts are created by an administrator.{% endif %}</div>
   </form>
   <svg class="backdrop" viewBox="0 0 620 620" aria-hidden="true">
     <circle class="r" cx="310" cy="310" r="309"/><circle class="r" cx="310" cy="310" r="240"/>

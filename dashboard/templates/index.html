@@ -3,7 +3,7 @@
 {% block content %}
 <div class="topbar">
   <div>
-    <div class="eyebrow">Research monitoring / sample run</div>
+    <div class="eyebrow">Research monitoring / live detector</div>
     <h1>Skywatch</h1>
   </div>
   <div class="status">
@@ -20,22 +20,46 @@
 </section>
 
 <div class="body">
-  <section class="panel" aria-labelledby="sky-title">
-    <div class="panel-head">
-      <div><h2 id="sky-title">Sky dome</h2><p>bearing and elevation (0 to 30 deg)</p></div>
-      <div class="legend"><span><i style="background:var(--danger)"></i>HIGH</span><span><i style="background:var(--warn)"></i>MED</span><span><i style="background:var(--accent)"></i>LOW</span></div>
-    </div>
-    <svg class="sky" viewBox="0 0 600 520" role="img" aria-label="Polar plot of active tracks by bearing and elevation">
-      <circle class="dome" cx="300" cy="260" r="220"/>
-      <g class="sweep-group"><path class="sweep" d="M300 260 L190 69.5 A220 220 0 0 1 410 69.5 Z"/></g>
-      <circle class="ring" cx="300" cy="260" r="220"/><circle class="ring" cx="300" cy="260" r="146.7"/><circle class="ring" cx="300" cy="260" r="73.3"/>
-      <line class="axis" x1="80" y1="260" x2="520" y2="260"/><line class="axis" x1="300" y1="40" x2="300" y2="480"/>
-      <text x="296" y="26">N</text><text x="532" y="264">E</text><text x="296" y="504">S</text><text x="56" y="264">W</text>
-      <text x="306" y="116">10°</text><text x="306" y="189">20°</text>
-      <g id="tracks"></g>
-    </svg>
-    <div id="sky-empty" class="empty">No active tracks.</div>
-  </section>
+  <div class="col">
+    <section class="panel" aria-labelledby="video-title">
+      <div class="panel-head">
+        <div><h2 id="video-title">Live view</h2><p id="video-sub">annotated detector output</p></div>
+        {% if user.role == 'admin' %}
+        <div class="controls">
+          <select id="source" aria-label="Source">{% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
+          <select id="sens" aria-label="Detection sensitivity" title="High sensitivity finds more drones but raises more false alarms">
+            <option value="standard">Standard</option><option value="high">High sensitivity</option></select>
+          <button class="btn small" id="toggle" type="button">Start</button>
+          <label class="btn small ghost" id="upload-label" title="Upload a video to analyse">Upload video
+            <input type="file" id="upload" accept="video/*,.mp4,.avi,.mov,.mkv,.webm" hidden></label>
+        </div>
+        {% endif %}
+      </div>
+      <div class="video">
+        <img id="video" alt="Annotated detector video" hidden>
+        <div id="video-empty" class="video-empty">Pick a clip or upload a video, then press Start.<br>You can also drop a video file here.</div>
+      </div>
+      <div id="video-error" class="flash error" role="alert" hidden style="margin-top:12px"></div>
+      {% if user.role == 'admin' %}<p class="hint">Upload button not working in this browser? Copy a video into <code>{{ video_dir }}</code> and it appears in the list.</p>{% endif %}
+    </section>
+
+    <section class="panel" aria-labelledby="sky-title">
+      <div class="panel-head">
+        <div><h2 id="sky-title">Sky dome</h2><p>bearing and elevation (0 to 30 deg)</p></div>
+        <div class="legend"><span><i style="background:var(--danger)"></i>HIGH</span><span><i style="background:var(--warn)"></i>MED</span><span><i style="background:var(--accent)"></i>LOW</span></div>
+      </div>
+      <svg class="sky" viewBox="0 0 600 520" role="img" aria-label="Polar plot of active tracks by bearing and elevation">
+        <circle class="dome" cx="300" cy="260" r="220"/>
+        <g class="sweep-group"><path class="sweep" d="M300 260 L190 69.5 A220 220 0 0 1 410 69.5 Z"/></g>
+        <circle class="ring" cx="300" cy="260" r="220"/><circle class="ring" cx="300" cy="260" r="146.7"/><circle class="ring" cx="300" cy="260" r="73.3"/>
+        <line class="axis" x1="80" y1="260" x2="520" y2="260"/><line class="axis" x1="300" y1="40" x2="300" y2="480"/>
+        <text x="296" y="26">N</text><text x="532" y="264">E</text><text x="296" y="504">S</text><text x="56" y="264">W</text>
+        <text x="306" y="116">10°</text><text x="306" y="189">20°</text>
+        <g id="tracks"></g>
+      </svg>
+      <div id="sky-empty" class="empty">No active tracks.</div>
+    </section>
+  </div>
 
   <section class="panel" aria-labelledby="feed-title">
     <div class="panel-head">

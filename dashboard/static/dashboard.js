@@ -8,8 +8,12 @@
   var el = {
     feed: $("feed"), tracks: $("tracks"), shown: $("shown"), live: $("live"), liveText: $("live-text"),
     sActive: $("s-active"), sActiveN: $("s-active-note"), sHigh: $("s-high"), sHighN: $("s-high-note"),
-    sConf: $("s-conf"), sLast: $("s-last"), sLastN: $("s-last-note"), empty: $("sky-empty")
+    sConf: $("s-conf"), sLast: $("s-last"), sLastN: $("s-last-note"), empty: $("sky-empty"),
+    video: $("video"), vEmpty: $("video-empty"), vErr: $("video-error"), vSub: $("video-sub"),
+    source: $("source"), sens: $("sens"), toggle: $("toggle"), upload: $("upload"), uploadLabel: $("upload-label")
   };
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
+  var detector = { running: false };
 
   function fmtTime(t) {
     var m = Math.floor(t / 60), s = t - m * 60;
@@ -114,11 +118,145 @@
         var active = renderTracks(latest);
         renderFeed(alerts);
         renderStats(alerts, latest, active);
-        setLive(true, "LIVE  " + new Date().toLocaleTimeString([], { hour12: false }));
       })
       .catch(function (e) { if (e.message !== "signed out") setLive(false, "OFFLINE  " + e.message); });
   }
 
+  function showVideo(on) {
+    el.video.hidden = !on;
+    el.vEmpty.hidden = on;
+  }
+
+  function applyStatus(st) {
+    var wasRunning = detector.running;
+    detector.running = !!st.running;
+    if (st.error) {
+      el.vErr.hidden = false; el.vErr.textContent = "Detector error: " + st.error;
+      setLive(false, "ERROR");
+    } else {
+      el.vErr.hidden = true;
+      if (st.running) setLive(true, "LIVE  " + st.fps + " fps  " + st.ms_per_frame + " ms");
+      else setLive(false, "DETECTOR STOPPED");
+    }
+    if (st.running) {
+      var seen = st.frames ? Math.round(100 * st.detections / st.frames) : 0;
+      el.vSub.textContent = st.source + " / " + st.frames + " frames / drone seen in " + seen + "%";
+    } else {
+      el.vSub.textContent = "annotated detector output";
+    }
+    if (st.running) {
+      // (re)attach the stream once the first frame exists; the route answers 404 until then
+      if (el.video.hidden || !el.video.getAttribute("src") || !wasRunning) {
+        el.video.src = "/video_feed?t=" + Date.now();
+      }
+      if (st.frames > 0) showVideo(true);       // do not rely on the <img> load event for a multipart stream
+    } else {
+      el.video.removeAttribute("src");
+      showVideo(false);
+    }
+    if (el.toggle) {
+      el.toggle.textContent = st.running ? "Stop" : "Start";
+      el.toggle.disabled = false;
+      if (el.source && st.source) el.source.value = st.source;
+      syncSources(st.sources || [], st.running);
+      el.source.disabled = !!st.running;
+      if (el.sens) { el.sens.disabled = !!st.running; if (st.running) el.sens.value = st.sensitivity; }
+      if (!st.running && !(st.sources || []).length) { el.toggle.disabled = true; }
+      if (el.upload) { el.upload.disabled = !!st.running; el.uploadLabel.classList.toggle("disabled", !!st.running); }
+    }
+  }
+
+  function syncSources(names, running) {
+    if (!el.source) return;
+    var have = Array.prototype.map.call(el.source.options, function (o) { return o.value; });
+    if (have.join("|") === names.join("|")) return;
+    var keep = el.source.value;
+    el.source.textContent = "";
+    names.forEach(function (n) {
+      var o = document.createElement("option"); o.value = n; o.textContent = n; el.source.appendChild(o);
+    });
+    if (names.indexOf(keep) >= 0) el.source.value = keep;
+  }
+
+  function showError(msg) { el.vErr.hidden = false; el.vErr.textContent = msg; }
+
+  function startDetector(name) {
+    return fetch("/api/detector/start", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+      body: JSON.stringify({ source: name, sensitivity: el.sens ? el.sens.value : "standard" })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); });
+  }
+
+  function uploadFile(file) {
+    if (!file || detector.running) return;
+    var fd = new FormData(); fd.append("video", file);
+    el.vSub.textContent = "uploading " + file.name + " ...";
+    el.toggle.disabled = true;
+    fetch("/api/detector/upload", { method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": csrf }, body: fd })
+      .then(function (r) {
+        if (r.status === 413) throw new Error("file is too large (limit 300 MB)");
+        return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "upload failed"); return j; });
+      })
+      .then(function (j) {
+        el.vErr.hidden = true;
+        syncSources(j.status.sources, false);
+        el.source.value = j.source;
+        return startDetector(j.source);
+      })
+      .then(function (res) { if (res && !res.ok) showError(res.body.error || "could not start"); })
+      .catch(function (e) { showError(e.message); el.vSub.textContent = "annotated detector output"; })
+      .then(function () { if (el.upload) el.upload.value = ""; el.toggle.disabled = false; pollStatus(); poll(); });
+  }
+
+  if (el.upload) {
+    el.upload.addEventListener("change", function () { uploadFile(el.upload.files[0]); });
+    var box = document.querySelector(".video");
+    ["dragenter", "dragover"].forEach(function (ev) {
+      box.addEventListener(ev, function (e) { e.preventDefault(); box.classList.add("drop"); });
+    });
+    ["dragleave", "drop"].forEach(function (ev) {
+      box.addEventListener(ev, function (e) { e.preventDefault(); box.classList.remove("drop"); });
+    });
+    box.addEventListener("drop", function (e) { uploadFile(e.dataTransfer.files[0]); });
+  }
+
+  function pollStatus() {
+    fetch("/api/detector/status", { headers: { "Accept": "application/json" }, credentials: "same-origin" })
+      .then(function (r) {
+        if (r.status === 401) { location.href = "/login"; throw new Error("signed out"); }
+        return r.json();
+      })
+      .then(applyStatus)
+      .catch(function (e) { if (e.message !== "signed out") setLive(false, "OFFLINE"); });
+  }
+
+  if (el.video) {
+    el.video.addEventListener("load", function () { showVideo(true); });
+    el.video.addEventListener("error", function () { if (detector.running) showVideo(false); });
+  }
+
+  if (el.toggle) {
+    el.toggle.addEventListener("click", function () {
+      var start = !detector.running;
+      el.toggle.disabled = true;
+      fetch(start ? "/api/detector/start" : "/api/detector/stop", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+        body: JSON.stringify({ source: el.source.value, sensitivity: el.sens ? el.sens.value : "standard" })
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+        .then(function (res) {
+          if (!res.ok) { el.vErr.hidden = false; el.vErr.textContent = res.body.error || "request failed"; el.toggle.disabled = false; return; }
+          el.vErr.hidden = true;
+          pollStatus(); poll();
+        })
+        .catch(function (e) { el.vErr.hidden = false; el.vErr.textContent = e.message; el.toggle.disabled = false; });
+    });
+  }
+
   poll();
+  pollStatus();
   setInterval(poll, POLL_MS);
+  setInterval(pollStatus, POLL_MS);
 })();

@@ -146,26 +146,12 @@ def cmd_demo(a):
 
 
 def cmd_run(a):
-    from .sources import PairedSource
+    from .runtime import build_pipeline
     from .visualize import render
 
     cfg = _apply_yolo_args(Config.load(a.config) if a.config else Config(), a)
-    src = PairedSource(a.rgb, a.thermal)
-    frames = iter(src)
-    first = next(frames)
-    _, r0, t0_ = first
-    rgb_size = (r0.shape[1], r0.shape[0]) if r0 is not None else tuple(a.rgb_size)
-    th_size = (t0_.shape[1], t0_.shape[0]) if t0_ is not None else tuple(a.thermal_size)
-    if a.homography:
-        H = load_homography(a.homography)
-    elif not a.thermal:
-        H = np.diag([rgb_size[0] / th_size[0], rgb_size[1] / th_size[1], 1.0])  # unused: no thermal camera
-    else:
-        # no calibration: assume the two cameras are boresighted with the thermal image filling the RGB image
-        print("WARNING: no --homography given; assuming thermal FOV == RGB FOV. Calibrate for real use.",
-              file=sys.stderr)
-        H = np.diag([rgb_size[0] / th_size[0], rgb_size[1] / th_size[1], 1.0])
-    pipe = CounterDronePipeline(cfg, H, rgb_size, th_size)
+    prep = build_pipeline(cfg, a.rgb, a.thermal, a.homography, tuple(a.rgb_size), tuple(a.thermal_size))
+    src, pipe, H, rgb_size, th_size = prep.src, prep.pipe, prep.H, prep.rgb_size, prep.thermal_size
     out = Path(a.out) if a.out else None
     if out:
         out.mkdir(parents=True, exist_ok=True)
@@ -175,8 +161,7 @@ def cmd_run(a):
     t_start, n_frames = t_last, 0
     fps = 0.0
     try:
-        import itertools
-        for t, rgb, thermal in itertools.chain([first], frames):
+        for t, rgb, thermal in prep:
             res = pipe.process(rgb, thermal, t)
             for e in res.events:
                 print(json.dumps(e.to_dict()), flush=True)
