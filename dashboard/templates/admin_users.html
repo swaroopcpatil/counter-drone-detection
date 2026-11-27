@@ -1,24 +1,31 @@
-{% extends "base.html" %}
-{% block title %}Users · Monitoring dashboard{% endblock %}
+{% extends "layout.html" %}
+{% block title %}Users · Skywatch{% endblock %}
 {% block content %}
-<div class="panel">
-  <strong>Accounts</strong>
-  <table>
-    <thead><tr><th>Username</th><th>Role</th></tr></thead>
-    <tbody>
-      {% for u in users %}<tr><td>{{ u.username }}</td><td>{{ u.role }}</td></tr>{% endfor %}
-    </tbody>
-  </table>
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Administration</div>
+    <h1>Accounts</h1>
+  </div>
 </div>
-<div class="panel">
-  <strong>Create account</strong>
-  <form method="post" style="display:grid;gap:10px;max-width:360px;margin-top:10px;">
-    <label>Username <input name="username" required minlength="3" maxlength="32"></label>
-    <label>Temporary password (12+ characters) <input name="password" type="password" required minlength="12"></label>
-    <label>Role
-      <select name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
-    </label>
-    <button type="submit">Create</button>
-  </form>
+<div class="admin-grid">
+  <section class="panel">
+    <div class="panel-head"><div><h2>Users</h2><p>{{ users|length }} total</p></div></div>
+    <table>
+      <thead><tr><th>Username</th><th>Role</th></tr></thead>
+      <tbody>
+        {% for u in users %}<tr><td>{{ u.username }}</td><td><span class="role {{ u.role }}">{{ u.role }}</span></td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <section class="panel">
+    <div class="panel-head"><div><h2>Create account</h2><p>admins only</p></div></div>
+    <form method="post">
+      <div class="field"><label for="nu">Username</label><input id="nu" name="username" required minlength="3" maxlength="32"></div>
+      <div class="field"><label for="np">Temporary password (12+ characters)</label><input id="np" name="password" type="password" required minlength="12" autocomplete="new-password"></div>
+      <div class="field"><label for="nr">Role</label>
+        <select id="nr" name="role">{% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></div>
+      <button class="btn" type="submit">Create</button>
+    </form>
+  </section>
 </div>
 {% endblock %}

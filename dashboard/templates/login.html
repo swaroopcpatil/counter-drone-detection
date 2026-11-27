@@ -1,13 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Sign in · Monitoring dashboard{% endblock %}
-{% block content %}
-<div class="panel" style="max-width:360px;margin:24px auto;">
-  <h2 style="font-size:16px;margin-top:0;">Sign in</h2>
-  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-  <form method="post" style="display:grid;gap:10px;">
-    <label>Username <input name="username" autocomplete="username" required maxlength="32"></label>
-    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
-    <button type="submit">Sign in</button>
+{% block title %}Sign in · Skywatch{% endblock %}
+{% block body %}
+<div class="login">
+  <form class="card" method="post">
+    <div class="brand">
+      <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <circle cx="18" cy="18" r="3" fill="var(--accent)"/>
+      </svg>
+      <span>Skywatch</span>
+    </div>
+    <div class="eyebrow">Research monitoring / sign in</div>
+    {% if error %}<div class="flash error" role="alert" style="margin-bottom:16px">{{ error }}</div>{% endif %}
+    <div class="field"><label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required maxlength="32" autofocus></div>
+    <div class="field"><label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required></div>
+    <button class="btn" type="submit">Sign in</button>
+    <div class="notice" style="margin-top:20px">Research use only. Accounts are created by an administrator.</div>
   </form>
+  <svg class="backdrop" viewBox="0 0 620 620" aria-hidden="true">
+    <circle class="r" cx="310" cy="310" r="309"/><circle class="r" cx="310" cy="310" r="240"/>
+    <circle class="r" cx="310" cy="310" r="170"/><circle class="r" cx="310" cy="310" r="100"/>
+    <g class="sweep-group"><path class="sweep" d="M310 310 L155 41.5 A310 310 0 0 1 465 41.5 Z"/></g>
+    <circle class="blip" cx="450" cy="150" r="7"/><circle class="blip2" cx="190" cy="390" r="5"/>
+  </svg>
 </div>
 {% endblock %}

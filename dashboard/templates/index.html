@@ -1,61 +1,49 @@
-{% extends "base.html" %}
-{% block title %}Alerts · Monitoring dashboard{% endblock %}
+{% extends "layout.html" %}
+{% block title %}Sky · Skywatch{% endblock %}
 {% block content %}
-<div class="panel">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-    <strong>Live alert feed</strong>
-    <span class="muted" id="status">loading…</span>
+<div class="topbar">
+  <div>
+    <div class="eyebrow">Research monitoring / sample run</div>
+    <h1>Skywatch</h1>
   </div>
-  <table aria-live="polite">
-    <thead><tr><th>Time (s)</th><th>Track</th><th>Level</th><th>Message</th></tr></thead>
-    <tbody id="rows"><tr><td colspan="4" class="muted">No alerts yet.</td></tr></tbody>
-  </table>
+  <div class="status">
+    <span id="live" class="pill stale"><span class="dot"></span><span id="live-text">CONNECTING</span></span>
+    <span class="user-chip"><span class="avatar">{{ user.username[:2]|upper }}</span>{{ user.username }} <small>{{ user.role }}</small></span>
+  </div>
 </div>
-<script>
-(function () {
-  const rows = document.getElementById("rows");
-  const status = document.getElementById("status");
 
-  function cell(text, cls) {
-    const td = document.createElement("td");
-    td.textContent = text;
-    if (cls) td.className = cls;
-    return td;
-  }
+<section class="stats" aria-label="Summary">
+  <div class="stat" style="--c:var(--accent)"><div class="label"><i></i>Active tracks</div><div class="value" id="s-active">0</div><div class="note" id="s-active-note">&nbsp;</div></div>
+  <div class="stat" style="--c:var(--danger)"><div class="label"><i></i>High alerts</div><div class="value" id="s-high">0</div><div class="note" id="s-high-note">&nbsp;</div></div>
+  <div class="stat" style="--c:var(--ok)"><div class="label"><i></i>Mean confidence</div><div class="value" id="s-conf">&mdash;</div><div class="note">p(drone), active tracks</div></div>
+  <div class="stat"><div class="label"><i></i>Last event</div><div class="value" id="s-last">&mdash;</div><div class="note" id="s-last-note">&nbsp;</div></div>
+</section>
 
-  function render(alerts) {
-    rows.textContent = "";
-    if (!alerts.length) {
-      const tr = document.createElement("tr");
-      tr.appendChild(cell("No alerts yet.", "muted"));
-      tr.firstChild.colSpan = 4;
-      rows.appendChild(tr);
-      return;
-    }
-    for (const a of alerts) {
-      const tr = document.createElement("tr");
-      tr.appendChild(cell(Number(a.t).toFixed(2)));
-      tr.appendChild(cell("#" + a.track_id));
-      tr.appendChild(cell(a.level, "level " + a.level));
-      tr.appendChild(cell(a.message || ""));
-      rows.appendChild(tr);
-    }
-  }
+<div class="body">
+  <section class="panel" aria-labelledby="sky-title">
+    <div class="panel-head">
+      <div><h2 id="sky-title">Sky dome</h2><p>bearing and elevation (0 to 30 deg)</p></div>
+      <div class="legend"><span><i style="background:var(--danger)"></i>HIGH</span><span><i style="background:var(--warn)"></i>MED</span><span><i style="background:var(--accent)"></i>LOW</span></div>
+    </div>
+    <svg class="sky" viewBox="0 0 600 520" role="img" aria-label="Polar plot of active tracks by bearing and elevation">
+      <circle class="dome" cx="300" cy="260" r="220"/>
+      <g class="sweep-group"><path class="sweep" d="M300 260 L190 69.5 A220 220 0 0 1 410 69.5 Z"/></g>
+      <circle class="ring" cx="300" cy="260" r="220"/><circle class="ring" cx="300" cy="260" r="146.7"/><circle class="ring" cx="300" cy="260" r="73.3"/>
+      <line class="axis" x1="80" y1="260" x2="520" y2="260"/><line class="axis" x1="300" y1="40" x2="300" y2="480"/>
+      <text x="296" y="26">N</text><text x="532" y="264">E</text><text x="296" y="504">S</text><text x="56" y="264">W</text>
+      <text x="306" y="116">10°</text><text x="306" y="189">20°</text>
+      <g id="tracks"></g>
+    </svg>
+    <div id="sky-empty" class="empty">No active tracks.</div>
+  </section>
 
-  async function poll() {
-    try {
-      const r = await fetch("/api/alerts?limit=50", { headers: { "Accept": "application/json" } });
-      if (r.status === 401) { location.href = "/login"; return; }
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      render(await r.json());
-      status.textContent = "updated " + new Date().toLocaleTimeString();
-    } catch (e) {
-      status.textContent = "update failed: " + e.message;
-    }
-  }
-
-  poll();
-  setInterval(poll, 2000);
-})();
-</script>
+  <section class="panel" aria-labelledby="feed-title">
+    <div class="panel-head">
+      <div><h2 id="feed-title">Alert feed</h2><p>newest first, refreshes every 2 s</p></div>
+      <span class="count" id="shown">0 shown</span>
+    </div>
+    <ul class="feed" id="feed" aria-live="polite"></ul>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
 {% endblock %}
