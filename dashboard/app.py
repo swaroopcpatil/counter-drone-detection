@@ -22,6 +22,7 @@ import re
 import secrets
 import sqlite3
 import sys
+import time
 import uuid
 from collections import deque
 from contextlib import contextmanager
@@ -49,6 +50,40 @@ UPLOAD_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 MAX_UPLOAD_BYTES = 300 * 1024 * 1024
 KEEP_UPLOADS = 5
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+PROXY_HEADERS = ("X-Forwarded-For", "X-Forwarded-Host", "Forwarded", "X-Real-IP", "CF-Connecting-IP")
+LOGIN_MAX_FAILURES = 5
+LOGIN_WINDOW_S = 300
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+       "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+       "base-uri 'self'; form-action 'self'")
+
+
+class LoginLimiter:
+    """Block a client address or a username after repeated failed sign-ins (in memory, per process)."""
+
+    def __init__(self, max_failures=LOGIN_MAX_FAILURES, window=LOGIN_WINDOW_S, clock=time.monotonic):
+        self.max, self.window, self.clock = max_failures, window, clock
+        self._fails: dict = {}
+
+    def _recent(self, key):
+        now = self.clock()
+        q = [t for t in self._fails.get(key, []) if now - t < self.window]
+        if q:
+            self._fails[key] = q
+        else:
+            self._fails.pop(key, None)
+        return q
+
+    def blocked(self, *keys) -> bool:
+        return any(len(self._recent(k)) >= self.max for k in keys)
+
+    def fail(self, *keys) -> None:
+        for k in keys:
+            self._fails.setdefault(k, []).append(self.clock())
+
+    def clear(self, *keys) -> None:
+        for k in keys:
+            self._fails.pop(k, None)
 
 
 def _secret_key(path: Path) -> str:
@@ -105,6 +140,10 @@ class Store:
             return {"username": row["username"], "role": row["role"]}
         return None
 
+    def has_admin(self) -> bool:
+        with self._conn() as c:
+            return c.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone() is not None
+
     def list_users(self):
         with self._conn() as c:
             return [dict(r) for r in c.execute(
@@ -129,17 +168,39 @@ def read_alerts(path: Path, limit: int = MAX_ALERTS):
 
 
 def create_app(db_path=None, alerts_path=None, testing=False, detector=None, open_access=False, upload_dir=None,
-               video_dir=None):
+               video_dir=None, public=False, limiter=None):
     app = Flask(__name__)
     db_path = Path(db_path or os.environ.get("DASHBOARD_DB", DEFAULT_DB))
     alerts_env = alerts_path or os.environ.get("DASHBOARD_ALERTS")   # optional fallback feed; none by default
     alerts_path = Path(alerts_env) if alerts_env else None
+    if public and open_access:
+        raise ValueError("open access (no sign-in) cannot be combined with public mode")
     app.config.update(
         SECRET_KEY=_secret_key(db_path.with_suffix(".key")) if not testing else "test-key",
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=public,          # public mode is served over HTTPS (tunnel / proxy)
         TESTING=testing,
     )
+    limiter = limiter or LoginLimiter()
+
+    def client_ip():
+        return (request.headers.get("CF-Connecting-IP") if public else None) or request.remote_addr or "?"
+
+    @app.before_request
+    def local_only_demo():
+        if open_access and any(h in request.headers for h in PROXY_HEADERS):
+            abort(403)                          # the no-password demo must never be reachable through a tunnel
+
+    @app.after_request
+    def security_headers(resp):
+        resp.headers.setdefault("Content-Security-Policy", CSP)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        if public:
+            resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return resp
     store = Store(db_path)
     detector = detector or DetectorService()
     app.extensions["store"] = store
@@ -193,15 +254,20 @@ def create_app(db_path=None, alerts_path=None, testing=False, detector=None, ope
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             password = request.form.get("password", "")
+            ip, who = "ip:" + client_ip(), "user:" + username.lower()
+            if not open_access and limiter.blocked(ip, who):
+                return render_template("login.html", error="Too many failed attempts. Try again in a few minutes."), 429
             if open_access:           # demo mode: any name, no password (loopback only, see serve)
                 name = re.sub(r"[^A-Za-z0-9_.-]", "", username)[:32] or "guest"
                 user = {"username": name, "role": "admin"}
             else:
                 user = store.check(username, password)
             if user:
+                limiter.clear(ip, who)
                 session.clear()
                 session["user"] = user
                 return redirect(request.args.get("next") or url_for("index"))
+            limiter.fail(ip, who)
             error = "Invalid username or password."
         return render_template("login.html", error=error)
 
@@ -231,6 +297,15 @@ def create_app(db_path=None, alerts_path=None, testing=False, detector=None, ope
             abort(404)
         return Response(detector.stream(), mimetype="multipart/x-mixed-replace; boundary=frame",
                         headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/detector/frame.jpg")
+    @login_required()
+    def detector_frame():
+        """The last annotated frame, shown after a run has finished."""
+        jpg = detector.latest_jpeg()
+        if jpg is None:
+            abort(404)
+        return Response(jpg, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/detector/status")
     @login_required()
@@ -323,6 +398,9 @@ def _cli(argv=None):
     sv.add_argument("--alerts", default=None)
     sv.add_argument("--open-access", action="store_true",
                     help="demo mode: any username, no password (only allowed on a loopback host)")
+    sv.add_argument("--public", action="store_true",
+                    help="production settings for use behind an HTTPS tunnel or proxy: real sign-in, secure "
+                         "cookies, HSTS and the waitress server")
     args = p.parse_args(argv)
 
     if args.cmd == "create-user":
@@ -339,6 +417,21 @@ def _cli(argv=None):
     else:
         if args.open_access and args.host not in LOOPBACK:
             raise SystemExit("--open-access disables sign-in; it is only allowed with --host 127.0.0.1")
+        if args.open_access and args.public:
+            raise SystemExit("--public needs real sign-in; do not combine it with --open-access")
+        if args.public:
+            db = Path(args.db or os.environ.get("DASHBOARD_DB", DEFAULT_DB))
+            if not Store(db).has_admin():
+                raise SystemExit("no admin account yet. Create one first:\n"
+                                 "  python -m dashboard.app create-user --role admin")
+            if args.host not in LOOPBACK:
+                print("WARNING: --public is meant to sit behind an HTTPS tunnel or proxy on 127.0.0.1; "
+                      f"{args.host} is reachable without TLS.", file=sys.stderr)
+            from waitress import serve
+            app = create_app(db_path=db, alerts_path=args.alerts, public=True)
+            print(f"serving on http://{args.host}:{args.port} (public mode)", flush=True)
+            serve(app, host=args.host, port=args.port, threads=16, max_request_body_size=MAX_UPLOAD_BYTES + 2_000_000)
+            return
         app = create_app(db_path=args.db, alerts_path=args.alerts, open_access=args.open_access)
         app.run(host=args.host, port=args.port, debug=False)
 

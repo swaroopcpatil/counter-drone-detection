@@ -7,8 +7,8 @@
   var $ = function (id) { return document.getElementById(id); };
   var el = {
     feed: $("feed"), tracks: $("tracks"), shown: $("shown"), live: $("live"), liveText: $("live-text"),
-    sActive: $("s-active"), sActiveN: $("s-active-note"), sHigh: $("s-high"), sHighN: $("s-high-note"),
-    sConf: $("s-conf"), sLast: $("s-last"), sLastN: $("s-last-note"), empty: $("sky-empty"),
+    sView: $("s-view"), sViewN: $("s-view-note"), sTotal: $("s-total"), sTotalN: $("s-total-note"),
+    sHigh: $("s-high"), sHighN: $("s-high-note"), sConf: $("s-conf"), empty: $("sky-empty"),
     video: $("video"), vEmpty: $("video-empty"), vErr: $("video-error"), vSub: $("video-sub"),
     source: $("source"), sens: $("sens"), toggle: $("toggle"), upload: $("upload"), uploadLabel: $("upload-label")
   };
@@ -86,8 +86,6 @@
   }
 
   function renderStats(alerts, latest, active) {
-    el.sActive.textContent = String(active.length);
-    el.sActiveN.textContent = latest.length + " tracks seen";
     var highs = alerts.filter(function (a) { return a.level === "HIGH"; });
     el.sHigh.textContent = String(highs.length);
     el.sHighN.textContent = highs.length ? "latest at " + fmtTime(Number(highs[0].t) || 0) : "none in window";
@@ -95,10 +93,6 @@
       var mean = active.reduce(function (s, a) { return s + (Number(a.drone_prob) || 0); }, 0) / active.length;
       el.sConf.textContent = mean.toFixed(2);
     } else { el.sConf.textContent = "—"; }
-    if (alerts.length) {
-      el.sLast.textContent = fmtTime(Number(alerts[0].t) || 0);
-      el.sLastN.textContent = alerts[0].level + " on T" + alerts[0].track_id;
-    } else { el.sLast.textContent = "—"; el.sLastN.textContent = "waiting for data"; }
   }
 
   function setLive(ok, text) {
@@ -136,11 +130,19 @@
     } else {
       el.vErr.hidden = true;
       if (st.running) setLive(true, "LIVE  " + st.fps + " fps  " + st.ms_per_frame + " ms");
+      else if (st.finished) setLive(true, "FINISHED");
       else setLive(false, "DETECTOR STOPPED");
     }
+    var seen = st.frames ? Math.round(100 * st.detections / st.frames) : 0;
+    el.sView.textContent = String(st.drones_in_view || 0);
+    el.sViewN.textContent = st.frames ? "peak " + (st.peak_in_view || 0) + " at once" : "start a video to count";
+    el.sTotal.textContent = String(st.drones_total || 0);
+    el.sTotalN.textContent = st.finished ? "final count for this video" : "distinct tracks declared as drone";
     if (st.running) {
-      var seen = st.frames ? Math.round(100 * st.detections / st.frames) : 0;
-      el.vSub.textContent = st.source + " / " + st.frames + " frames / drone seen in " + seen + "%";
+      el.vSub.textContent = st.source + " / " + st.frames + " frames / detections in " + seen + "% of frames";
+    } else if (st.finished) {
+      el.vSub.textContent = "finished: " + st.source + " / " + st.drones_total + " drone" + (st.drones_total === 1 ? "" : "s") +
+        " seen, up to " + st.peak_in_view + " at once";
     } else {
       el.vSub.textContent = "annotated detector output";
     }
@@ -150,12 +152,15 @@
         el.video.src = "/video_feed?t=" + Date.now();
       }
       if (st.frames > 0) showVideo(true);       // do not rely on the <img> load event for a multipart stream
+    } else if (st.finished && st.frames > 0) {
+      if (wasRunning || !el.video.getAttribute("src")) el.video.src = "/api/detector/frame.jpg?t=" + Date.now();
+      showVideo(true);                           // keep the last annotated frame on screen
     } else {
       el.video.removeAttribute("src");
       showVideo(false);
     }
     if (el.toggle) {
-      el.toggle.textContent = st.running ? "Stop" : "Start";
+      el.toggle.textContent = st.running ? "Stop" : (st.finished ? "Run again" : "Start");
       el.toggle.disabled = false;
       if (el.source && st.source) el.source.value = st.source;
       syncSources(st.sources || [], st.running);

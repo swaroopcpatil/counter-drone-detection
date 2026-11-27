@@ -146,3 +146,64 @@ def test_serve_refuses_open_access_on_a_public_host():
     from dashboard.app import _cli
     with pytest.raises(SystemExit):
         _cli(["serve", "--host", "0.0.0.0", "--open-access"])
+
+
+def test_repeated_failed_logins_are_blocked_then_allowed_after_the_window(tmp_path):
+    from dashboard.app import LoginLimiter
+    now = [0.0]
+    lim = LoginLimiter(max_failures=3, window=60, clock=lambda: now[0])
+    for _ in range(3):
+        assert not lim.blocked("u")
+        lim.fail("u")
+    assert lim.blocked("u") and not lim.blocked("someone-else")
+    now[0] = 61
+    assert not lim.blocked("u")                    # failures expire
+    lim.fail("u"); lim.clear("u")
+    assert not lim.blocked("u")
+
+
+def test_login_is_rate_limited_even_for_the_correct_password(env):
+    _, client = env
+    for _ in range(5):
+        assert login(client, "viewer1", "wrong-password-value").status_code == 200
+    r = login(client, "viewer1", PASSWORD)
+    assert r.status_code == 429 and b"Too many failed attempts" in r.data
+    assert client.get("/api/alerts").status_code == 401
+    other = login(client, "admin1")                # a different account from the same address is also held back
+    assert other.status_code in (302, 429)
+
+
+def test_security_headers_and_secure_cookie_in_public_mode(tmp_path):
+    store = Store(tmp_path / "u.db")
+    store.add_user("boss", PASSWORD, "admin")
+    pub = create_app(db_path=tmp_path / "u.db", testing=True, detector=DetectorService(sources={}), public=True)
+    r = pub.test_client().get("/login")
+    assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"]
+    assert r.headers["X-Content-Type-Options"] == "nosniff" and r.headers["X-Frame-Options"] == "DENY"
+    assert "max-age" in r.headers["Strict-Transport-Security"]
+    assert "Secure" in r.headers.get("Set-Cookie", "")
+    local = create_app(db_path=tmp_path / "u2.db", testing=True, detector=DetectorService(sources={}))
+    assert "Strict-Transport-Security" not in local.test_client().get("/login").headers
+
+
+def test_public_mode_cannot_be_combined_with_open_access(tmp_path):
+    with pytest.raises(ValueError):
+        create_app(db_path=tmp_path / "u.db", testing=True, detector=DetectorService(sources={}),
+                   public=True, open_access=True)
+
+
+def test_open_access_demo_refuses_requests_that_came_through_a_proxy(tmp_path):
+    app = create_app(db_path=tmp_path / "u.db", testing=True, detector=DetectorService(sources={}), open_access=True)
+    client = app.test_client()
+    assert client.get("/login").status_code == 200
+    for header in ("X-Forwarded-For", "CF-Connecting-IP", "X-Real-IP", "Forwarded"):
+        assert client.get("/login", headers={header: "203.0.113.9"}).status_code == 403, header
+
+
+def test_serve_public_needs_an_admin_account(tmp_path):
+    from dashboard.app import _cli
+    with pytest.raises(SystemExit) as e:
+        _cli(["serve", "--public", "--db", str(tmp_path / "none.db")])
+    assert "no admin account" in str(e.value)
+    with pytest.raises(SystemExit):
+        _cli(["serve", "--public", "--open-access"])

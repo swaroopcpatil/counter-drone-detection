@@ -119,6 +119,22 @@ Sources are an allowlist of names on the server (default: the first three Anti-U
 `runs/yolo/anti_uav_rgb/weights/best.pt` on the GPU when present (`DASHBOARD_YOLO_WEIGHTS`, or
 `DASHBOARD_BACKEND=classical` to skip them). Serve over HTTPS before using it on a network.
 
+## Share the dashboard publicly from your own PC
+
+Vercel cannot run the detector, but your PC can, through an HTTPS tunnel. Public mode turns on real sign-in
+only (no demo login), secure cookies, HSTS and security headers, limits repeated failed logins, and uses the
+`waitress` server. Uploads and detector control stay admin-only, so create accounts only for people you trust.
+
+```bash
+python -m dashboard.app create-user --role admin     # once; you type the password
+powershell -ExecutionPolicy Bypass -File scripts/run_public.ps1
+```
+
+The script starts the server on `127.0.0.1:5000` and a tunnel (`cloudflared`, or `-Tunnel ssh` for a no-install
+fallback through localhost.run). It prints a public `https://` address that changes each time. The site is
+reachable only while the PC is on and the script is running. Never use `--open-access` with a tunnel (the server
+refuses proxied requests in that mode).
+
 ## Train on Anti-UAV300 with a GPU (one command)
 
 [Anti-UAV300](https://github.com/ZhaoJ9014/Anti-UAV) provides paired RGB and infrared videos

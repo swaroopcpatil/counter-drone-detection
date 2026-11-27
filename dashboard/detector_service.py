@@ -40,9 +40,12 @@ def default_sources() -> dict:
 def default_config(sensitivity: str = "standard"):
     """YOLO on the GPU when weights and CUDA are available, otherwise the classical detector.
 
-    standard: YOLO only, confidence 0.5 (few false alarms).
-    high:     classical saliency detector plus YOLO labels, confidence 0.25, larger input
-              (finds more small or unfamiliar drones, at the cost of more false alarms).
+    standard: YOLO only, confidence 0.5 (fewest false alarms).
+    high:     YOLO only, confidence 0.25 and a larger input size, so fainter or smaller drones
+              still count. It does NOT add the classical saliency detector: on footage with
+              buildings or other clutter that detector flags every high-contrast edge, and the
+              tracker then scores the static ones as "hovering drones" (measured on Anti-UAV
+              test clips: about 30 false drones per clip, and the real drone missed in one).
     """
     from counter_drone.config import Config
     cfg = Config()
@@ -54,18 +57,20 @@ def default_config(sensitivity: str = "standard"):
         except Exception:
             device = "cpu"
         cfg.rgb.yolo_weights, cfg.rgb.yolo_device = weights, device
+        cfg.rgb.backend = "yolo"
         if sensitivity == "high":
-            cfg.rgb.backend, cfg.rgb.yolo_conf, cfg.rgb.yolo_imgsz = "hybrid", 0.25, 1280
+            cfg.rgb.yolo_conf, cfg.rgb.yolo_imgsz = 0.25, 1280
         else:
-            cfg.rgb.backend, cfg.rgb.yolo_conf, cfg.rgb.yolo_imgsz = "yolo", 0.5, 960
+            cfg.rgb.yolo_conf, cfg.rgb.yolo_imgsz = 0.5, 960
     return cfg
 
 
 class DetectorService:
-    def __init__(self, sources: dict | None = None, make_config=None, loop: bool = True):
+    def __init__(self, sources: dict | None = None, make_config=None, loop: bool | None = None):
         self.sources = dict(default_sources() if sources is None else sources)
         self._make_config = make_config or default_config
-        self.loop = loop
+        # analyse a video once by default; DASHBOARD_LOOP=1 replays it endlessly (demo screens)
+        self.loop = (os.environ.get("DASHBOARD_LOOP") == "1") if loop is None else loop
         self._cond = threading.Condition()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -80,6 +85,10 @@ class DetectorService:
         self._ms = 0.0
         self._frames = 0
         self._detected = 0
+        self._in_view = 0
+        self._peak = 0
+        self._seen_ids: set = set()
+        self._finished = False
         self._sens = "standard"
         self._seq = 0
         self._jpeg: bytes | None = None
@@ -90,6 +99,8 @@ class DetectorService:
             return {"running": self._running, "source": self._source, "fps": round(self._fps, 1),
                     "ms_per_frame": round(self._ms, 1), "frames": self._frames, "error": self._error,
                     "detections": self._detected, "sensitivity": self._sens,
+                    "drones_in_view": self._in_view, "drones_total": len(self._seen_ids),
+                    "peak_in_view": self._peak, "finished": self._finished,
                     "sources": sorted(self.sources)}
 
     def alerts(self, limit: int = 50) -> list:
@@ -175,6 +186,7 @@ class DetectorService:
             src, frames = prep.src, iter(prep)
             live = bool(getattr(src, "live", False))
             period = 0.0 if live else 1.0 / max(1.0, float(getattr(src, "file_fps", 30.0)))
+            thr = cfg.threat.drone_prob_high                  # a track counts as a drone from this probability
             base, t_off, last_t = None, 0.0, 0.0
             t_prev = next_due = time.perf_counter()
             while not self._stop.is_set():
@@ -187,7 +199,13 @@ class DetectorService:
                     res = pipe.process(rgb, thermal, tn)
                     last_t = t - base
                     img = rgb if rgb is not None else np.zeros((rgb_size[1], rgb_size[0], 3), np.uint8)
+                    drones = [tr for tr in res.tracks if tr.confirmed and tr.drone_prob >= thr]
+                    in_view = sum(1 for tr in drones if tr.misses == 0)   # matched in this very frame
                     frame = render(img, res, H, th_size, fps=self._fps, has_thermal=False)
+                    total_now = len(self._seen_ids | {tr.track_id for tr in drones})
+                    label = f"Drones in view: {in_view}   seen: {total_now}"
+                    cv2.putText(frame, label, (12, frame.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
+                    cv2.putText(frame, label, (12, frame.shape[0] - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
                     if frame.shape[1] > STREAM_WIDTH:
                         s = STREAM_WIDTH / frame.shape[1]
                         frame = cv2.resize(frame, (STREAM_WIDTH, int(frame.shape[0] * s)), interpolation=cv2.INTER_AREA)
@@ -195,6 +213,9 @@ class DetectorService:
                     done = time.perf_counter()
                     with self._cond:
                         self._frames += 1
+                        self._seen_ids.update(tr.track_id for tr in drones)
+                        self._in_view = in_view
+                        self._peak = max(self._peak, in_view)
                         self._detected += 1 if res.fused_dets else 0
                         self._ms = (done - tick) * 1e3
                         self._fps = 0.9 * self._fps + 0.1 / max(1e-3, done - t_prev) if self._fps else 1.0 / max(1e-3, done - t_prev)
@@ -227,6 +248,8 @@ class DetectorService:
                 except Exception:
                     pass
             with self._cond:
+                self._finished = (not self._stop.is_set()) and self._error is None and self._frames > 0
+                self._in_view = 0
                 self._running = False
                 self._cond.notify_all()
 

@@ -13,10 +13,10 @@
 </div>
 
 <section class="stats" aria-label="Summary">
-  <div class="stat" style="--c:var(--accent)"><div class="label"><i></i>Active tracks</div><div class="value" id="s-active">0</div><div class="note" id="s-active-note">&nbsp;</div></div>
-  <div class="stat" style="--c:var(--danger)"><div class="label"><i></i>High alerts</div><div class="value" id="s-high">0</div><div class="note" id="s-high-note">&nbsp;</div></div>
+  <div class="stat" style="--c:var(--danger)"><div class="label"><i></i>Drones in view</div><div class="value" id="s-view">0</div><div class="note" id="s-view-note">&nbsp;</div></div>
+  <div class="stat" style="--c:var(--accent)"><div class="label"><i></i>Drones seen in video</div><div class="value" id="s-total">0</div><div class="note" id="s-total-note">distinct tracks declared as drone</div></div>
+  <div class="stat" style="--c:var(--warn)"><div class="label"><i></i>High alerts</div><div class="value" id="s-high">0</div><div class="note" id="s-high-note">&nbsp;</div></div>
   <div class="stat" style="--c:var(--ok)"><div class="label"><i></i>Mean confidence</div><div class="value" id="s-conf">&mdash;</div><div class="note">p(drone), active tracks</div></div>
-  <div class="stat"><div class="label"><i></i>Last event</div><div class="value" id="s-last">&mdash;</div><div class="note" id="s-last-note">&nbsp;</div></div>
 </section>
 
 <div class="body">
@@ -27,7 +27,7 @@
         {% if user.role == 'admin' %}
         <div class="controls">
           <select id="source" aria-label="Source">{% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}</select>
-          <select id="sens" aria-label="Detection sensitivity" title="High sensitivity finds more drones but raises more false alarms">
+          <select id="sens" aria-label="Detection sensitivity" title="Lower confidence threshold and larger input: catches fainter or smaller drones, may add a few false alarms">
             <option value="standard">Standard</option><option value="high">High sensitivity</option></select>
           <button class="btn small" id="toggle" type="button">Start</button>
           <label class="btn small ghost" id="upload-label" title="Upload a video to analyse">Upload video

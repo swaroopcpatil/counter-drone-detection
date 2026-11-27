@@ -219,3 +219,51 @@ def test_short_clip_loops_without_error_and_time_keeps_increasing(clip):
         assert times == sorted(times)                     # the looped clip does not rewind the clock
     finally:
         svc.stop()
+
+
+def test_status_has_drone_counts_and_a_finished_run_keeps_its_summary(env):
+    app, service = env
+    admin = app.test_client()
+    login(admin, "admin1")
+    st = admin.get("/api/detector/status").get_json()
+    assert {"drones_in_view", "drones_total", "peak_in_view", "finished"} <= set(st)
+    assert st["finished"] is False and st["drones_total"] == 0
+
+    assert post_json(admin, "/api/detector/start", {"source": "clip"}).status_code == 200
+    assert wait_for(lambda: not service.status()["running"], 60)        # the 3 s clip plays once, no loop
+    done = admin.get("/api/detector/status").get_json()
+    assert done["error"] is None and done["finished"] is True and done["frames"] > 20
+    assert done["drones_in_view"] == 0                                  # nothing is "in view" after the end
+    assert done["drones_total"] >= 0 and done["peak_in_view"] <= max(done["drones_total"], 0) + 10
+
+    jpg = admin.get("/api/detector/frame.jpg")
+    assert jpg.status_code == 200 and jpg.mimetype == "image/jpeg" and jpg.data[:2] == b"\xff\xd8"
+
+
+def test_manual_stop_is_not_reported_as_finished(env):
+    app, service = env
+    admin = app.test_client()
+    login(admin, "admin1")
+    post_json(admin, "/api/detector/start", {"source": "clip"})
+    assert wait_for(lambda: service.status()["frames"] >= 3)
+    stopped = post_json(admin, "/api/detector/stop").get_json()
+    assert stopped["running"] is False and stopped["finished"] is False
+
+
+def test_frame_route_needs_login_and_a_frame(env):
+    app, _ = env
+    anon = app.test_client()
+    assert anon.get("/api/detector/frame.jpg").status_code == 401
+    admin = app.test_client()
+    login(admin, "admin1")
+    assert admin.get("/api/detector/frame.jpg").status_code == 404
+
+
+def test_high_sensitivity_never_adds_the_classical_detector():
+    """The hybrid (classical + YOLO) mode scored static clutter as hovering drones: ~30 false drones per clip."""
+    from dashboard.detector_service import DEFAULT_WEIGHTS, default_config
+    if not DEFAULT_WEIGHTS.exists():
+        pytest.skip("no trained RGB weights")
+    std, high = default_config("standard"), default_config("high")
+    assert std.rgb.backend == high.rgb.backend == "yolo"
+    assert high.rgb.yolo_conf < std.rgb.yolo_conf and high.rgb.yolo_imgsz > std.rgb.yolo_imgsz
