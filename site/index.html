@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Skywatch · Counter-drone detection research</title>
+<meta name="description" content="Research prototype: detection, tracking and threat assessment of small drones from RGB and thermal video, with YOLO11 models trained on the Anti-UAV300 benchmark.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap">
+<style>
+:root{--bg:#070b14;--panel:#0e1626;--panel-2:#131e33;--line:#22314d;--text:#e9f0fb;--muted:#7d8da9;--accent:#4de3e1;--warn:#ffb84d;--danger:#ff5c70;--ok:#5ce3a0;
+--sans:"Space Grotesk",system-ui,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Consolas,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 var(--sans)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.eyebrow{font:11px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+nav{display:flex;justify-content:space-between;align-items:center;padding:18px 0;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:-.02em}
+nav .links{display:flex;gap:18px;font:13px var(--mono)}
+nav .links a{color:var(--muted)}nav .links a:hover{color:var(--text);text-decoration:none}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:32px;align-items:center;padding:40px 0 56px}
+h1{font-size:clamp(36px,6vw,60px);line-height:1.04;letter-spacing:-.03em;margin:12px 0 16px}
+.lead{color:#b7c4da;font-size:18px;max-width:34em;margin:0 0 24px}
+.btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;padding:12px 20px;border-radius:10px;font-weight:700;border:1px solid var(--line);color:var(--text)}
+.btn.primary{background:var(--accent);color:var(--bg);border-color:transparent}.btn:hover{text-decoration:none;filter:brightness(1.1)}
+.radar{width:100%;height:auto}
+.radar .r{fill:none;stroke:var(--line);stroke-width:1}
+.radar .sweep-g{transform-origin:310px 310px;animation:spin 9s linear infinite}
+.radar .sweep{fill:var(--accent);fill-opacity:.11}
+.radar .blip{fill:var(--danger);filter:drop-shadow(0 0 8px var(--danger));animation:pulse 2.4s ease-in-out infinite}
+.radar .blip2{fill:var(--accent)}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+section{padding:44px 0;border-top:1px solid var(--line)}
+h2{font-size:28px;letter-spacing:-.02em;margin:6px 0 20px}
+.grid{display:grid;gap:16px}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.stat .v{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1.1;margin:6px 0 4px}
+.stat .k{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.stat .n{font:12px var(--mono);color:var(--c,var(--muted))}
+.bar{height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden;margin-top:6px}.bar i{display:block;height:100%;background:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:16%}
+figure{margin:0}figure img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);display:block}
+figcaption{font:12px var(--mono);color:var(--muted);margin-top:8px}
+.note{border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn) 8%,transparent);color:var(--warn);border-radius:10px;padding:12px 14px;font-size:14px}
+ul.clean{margin:0;padding-left:18px;color:#b7c4da}ul.clean li{margin:8px 0}
+footer{padding:36px 0 56px;border-top:1px solid var(--line);color:var(--muted);font:13px var(--mono)}
+@media(max-width:860px){.hero{grid-template-columns:1fr}.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.g3,.g2{grid-template-columns:1fr}.radar{max-width:420px;margin:0 auto}}
+@media(max-width:480px){.g4{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav aria-label="Primary">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="#4de3e1" stroke-width="2"/><circle cx="18" cy="18" r="3" fill="#4de3e1"/></svg>
+      Skywatch
+    </div>
+    <div class="links"><a href="#results">Results</a><a href="#how">How it works</a><a href="#demo">Demo</a><a href="#limits">Limits</a><a href="https://github.com/swaroopcpatil/counter-drone-detection">GitHub</a></div>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Research prototype / computer vision</div>
+      <h1>See small drones in RGB and thermal video.</h1>
+      <p class="lead">Detection, tracking and threat assessment of small drones from a visible camera and a thermal camera, with YOLO11 models trained on the real Anti-UAV300 benchmark.</p>
+      <div class="btns"><a class="btn primary" href="https://github.com/swaroopcpatil/counter-drone-detection">View the code</a><a class="btn" href="#results">See the results</a></div>
+    </div>
+    <svg class="radar" viewBox="0 0 620 620" role="img" aria-label="Animated radar sweep with two tracked targets">
+      <circle class="r" cx="310" cy="310" r="309"/><circle class="r" cx="310" cy="310" r="240"/><circle class="r" cx="310" cy="310" r="170"/><circle class="r" cx="310" cy="310" r="100"/>
+      <g class="sweep-g"><path class="sweep" d="M310 310 L155 41.5 A310 310 0 0 1 465 41.5 Z"/></g>
+      <circle class="blip" cx="450" cy="150" r="7"/><circle class="blip2" cx="190" cy="390" r="5"/>
+    </svg>
+  </header>
+
+  <section id="results">
+    <div class="eyebrow">Measured results</div>
+    <h2>What it achieves on the Anti-UAV300 benchmark</h2>
+    <div class="grid g4">
+      <div class="card stat"><div class="k">RGB detector mAP50</div><div class="v">0.995</div><div class="n">YOLO11s, validation split</div></div>
+      <div class="card stat"><div class="k">Infrared detector mAP50</div><div class="v">0.993</div><div class="n">YOLO11s, validation split</div></div>
+      <div class="card stat" style="--c:var(--ok)"><div class="k">Drone found, RGB</div><div class="v">76.9%</div><div class="n">tracked system, 20 held-out videos</div><div class="bar"><i style="width:76.9%"></i></div></div>
+      <div class="card stat" style="--c:var(--ok)"><div class="k">Drone found, infrared</div><div class="v">63.2%</div><div class="n">tracked system, 20 held-out videos</div><div class="bar"><i style="width:63.2%"></i></div></div>
+    </div>
+    <p style="color:#b7c4da;margin-top:18px">The tracker keeps the detector's hits and bridges the frames it misses, so the tracked system finds the drone in more frames than the detector alone (75.7% RGB and 62.0% infrared). On a laptop GPU the pipeline processed a 1080p test video at about 37 frames per second, with detection taking about 10 ms per frame.</p>
+  </section>
+
+  <section id="how">
+    <div class="eyebrow">Pipeline</div>
+    <h2>How it works</h2>
+    <div class="card">
+      <table>
+        <tr><th>Detection</th><td>YOLO11s per camera, fine-tuned on Anti-UAV300. A training-free fallback for clean sky uses morphological saliency with an adaptive threshold.</td></tr>
+        <tr><th>Fusion</th><td>Thermal boxes are mapped into the RGB image through a calibrated homography and paired. Either camera can drop out and tracking continues on the other.</td></tr>
+        <tr><th>Tracking</th><td>A constant-velocity Kalman filter per target, with gates for jerky camera motion, re-acquisition after jumps and coasting through dropouts.</td></tr>
+        <tr><th>Classification</th><td>Explainable log-odds over about 45 frames: detector label and confidence, cross-sensor consistency, wing-beat, turn rate and hover.</td></tr>
+        <tr><th>Threat</th><td>Bearing, elevation, rough range and closing speed, then NONE, LOW, MEDIUM or HIGH levels with hysteresis so alerts do not flicker.</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="demo">
+    <div class="eyebrow">Demo</div>
+    <h2>The operator view</h2>
+    <div class="grid g2">
+      <figure><img loading="lazy" alt="Operator view on the built-in simulation: annotated RGB on the left and false-colour thermal on the right, with drones tracked through dusk" src="https://cdn.jsdelivr.net/gh/swaroopcpatil/counter-drone-detection@master/docs/media/synthetic_demo.gif"><figcaption>Simulation: drones tracked as dusk falls and the RGB image goes dark, tracking continues on thermal.</figcaption></figure>
+      <figure><img loading="lazy" alt="Architecture diagram: RGB and thermal detection, fusion, tracking, classification and threat assessment" src="https://cdn.jsdelivr.net/gh/swaroopcpatil/counter-drone-detection@master/docs/media/architecture.svg"><figcaption>Architecture of the pipeline.</figcaption></figure>
+    </div>
+    <p style="color:#b7c4da;margin-top:18px">The repository also contains a small web dashboard (sign-in, a live view with drone counts, a sky-dome plot and an alert feed). It needs a long-running detector and a GPU for good speed, so it runs locally or on a GPU host rather than on this page.</p>
+  </section>
+
+  <section id="limits">
+    <div class="eyebrow">Honest limits</div>
+    <h2>What it does not do yet</h2>
+    <div class="note" style="margin-bottom:16px">Research use only. This is a prototype, not an operational system.</div>
+    <ul class="clean">
+      <li><b>Unfamiliar footage.</b> Training data is drone-only sky footage from specific sites. Expect misses and false alarms on scenes it has not seen, such as faces, indoor objects or heavy clutter, until it is fine-tuned on local footage.</li>
+      <li><b>Range is approximate.</b> It is estimated from the apparent size with an assumed drone span. True range needs radar, RF or a calibrated stereo pair.</li>
+      <li><b>Two-camera fusion.</b> On Anti-UAV the RGB and infrared videos are not pixel-aligned, so fused mode scores below single-camera mode. Per-camera operation is the recommended setup.</li>
+      <li><b>Clutter and the simple detector.</b> The training-free detector flags any high-contrast spot. Near buildings it produced about 30 false drones per clip in our tests, so the dashboard uses the trained model only.</li>
+    </ul>
+  </section>
+
+  <footer>
+    Research prototype. Source and results: <a href="https://github.com/swaroopcpatil/counter-drone-detection">github.com/swaroopcpatil/counter-drone-detection</a>.<br>
+    Built on the Anti-UAV benchmark and Ultralytics YOLO11.
+  </footer>
+</div>
+</body>
+</html>
